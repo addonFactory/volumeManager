@@ -80,13 +80,13 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		volume=round(self.current_app.GetMasterVolume(), 2)
 		if direction == 1:
 			if volume>=1.0:
-				tones.beep(500, 300)
+				tones.beep(500, 50)
 				return
 			volume+=0.01
 			self.current_app.SetMasterVolume(volume, None)
 		else:
 			if volume<=0.0:
-				tones.beep(200, 300)
+				tones.beep(250, 50)
 				return
 			volume-=0.01
 			self.current_app.SetMasterVolume(volume, None)
