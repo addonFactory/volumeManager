@@ -137,7 +137,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		for session in all_sessions:
 			if session.Process:
 				s=session.SimpleAudioVolume
-				s.name=session.Process.name()
+				s.name = session.DisplayName or session.Process.name()
 				self.apps.append(s)
 				if s.name==self.current_app.name:
 					self.app_index=len(self.apps)-1
