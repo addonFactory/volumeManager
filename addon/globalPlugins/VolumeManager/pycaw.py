@@ -8,7 +8,7 @@ from ctypes.wintypes import (BOOL, DWORD, INT, LONG, LPCWSTR, LPWSTR, UINT,
 from enum import Enum
 
 import comtypes
-import psutil
+from . import psutil
 from comtypes import COMMETHOD, GUID, IUnknown
 from comtypes.automation import VARTYPE, VT_BOOL, VT_CLSID, VT_LPWSTR, VT_UI4
 

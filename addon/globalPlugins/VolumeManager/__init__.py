@@ -4,22 +4,23 @@
 # Authors: Danstiv, Beqa gozalishvili
 # Copyright 2019, released under GPL.
 
+from nvdaBuiltin.appModules import explorer
+def event_UIA_notification(self, obj, next, **kwargs):
+	if 'displayString' in kwargs and kwargs['displayString']=='уровень громкос':
+		return
+	next()
+explorer.AppModule.event_UIA_notification = event_UIA_notification
 import addonHandler
 from comtypes import CLSCTX_ALL
 from ctypes import POINTER, cast
 import globalPluginHandler
 import gui
 from gui.guiHelper import BoxSizerHelper
-import os
 from speech import cancelSpeech
-import sys
 import tones
 import ui
 import wx
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-from . import pycaw
-from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
-del sys.path[-1]
+from .pycaw import AudioUtilities, IAudioEndpointVolume
 
 addonHandler.initTranslation()
 
@@ -53,9 +54,7 @@ class Change_volume_dialog(wx.Dialog):
 	def on_cancel(self, event):
 		self.set_all_gestures()
 		event.Skip()
-	def on_close(self, event):
-		self.set_all_gestures()
-		event.Skip()
+	on_close=on_cancel
 	def set(self):
 		self.callback(self.volume_field.GetValue())
 class GlobalPlugin(globalPluginHandler.GlobalPlugin):
@@ -63,40 +62,44 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		globalPluginHandler.GlobalPlugin.__init__(self, *args, **kwargs)
 		self.enabled=False
 		self.app_index=0
+		self.initialize()
+		self.current_app=self.master_volume
+		Change_volume_dialog.callback=self.set_volume
+		Change_volume_dialog.set_all_gestures=self.set_all_gestures
+		self.standard_gestures={'kb:nvda+shift+v': 'turn', 'kb:volumeDown': 'volume_changed', 'kb:volumeUp': 'volume_changed'}
+		self.gestures={'kb:leftArrow': 'move_to_app', 'kb:rightArrow': 'move_to_app', 'kb:upArrow': 'change_volume', 'kb:downArrow': 'change_volume', 'kb:space': 'set_volume', 'kb:m': 'mute_app', 'kb:r': 'reload'}
+		self.set_standard_gestures()
+	def initialize(self):
 		devices = AudioUtilities.GetSpeakers()
 		interface = devices.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
 		self.master_volume=cast(interface, POINTER(IAudioEndpointVolume))
 		self.master_volume.SetMasterVolume=self.master_volume.SetMasterVolumeLevelScalar
 		self.master_volume.GetMasterVolume=self.master_volume.GetMasterVolumeLevelScalar
 		self.master_volume.name=_('Master volume')
-		self.current_app=self.master_volume
-		Change_volume_dialog.callback=self.set_volume
-		Change_volume_dialog.set_all_gestures=self.set_all_gestures
-		self.standard_gestures={'kb:nvda+shift+v': 'turn', 'kb:volumeDown': 'volume_changed', 'kb:volumeUp': 'volume_changed'}
-		self.gestures={'kb:leftArrow': 'move_to_app', 'kb:rightArrow': 'move_to_app', 'kb:upArrow': 'change_volume', 'kb:downArrow': 'change_volume', 'kb:space': 'set_volume', 'kb:m': 'mute_app'}
-		self.set_standard_gestures()
+	def script_reload(self, gesture):
+		self.initialize()
+		ui.message(_('Reloaded.'))
 	def script_change_volume(self, gesture):
-		direction=1 if gesture.logIdentifier.split(':')[-1]=='upArrow' else -1
+		direction=1 if gesture._get_identifiers()[1].split(':')[-1]=='upArrow' else -1
 		volume=round(self.current_app.GetMasterVolume(), 2)
 		if direction == 1:
 			if volume>=1.0:
-				tones.beep(500, 50)
+				tones.beep(500, 100)
 				return
 			volume+=0.01
-			self.current_app.SetMasterVolume(volume, None)
 		else:
 			if volume<=0.0:
-				tones.beep(250, 50)
+				tones.beep(200, 100)
 				return
 			volume-=0.01
-			self.current_app.SetMasterVolume(volume, None)
+		self.current_app.SetMasterVolume(volume, None)
 		ui.message(str(int(round(volume*100, 0)))+'%')
 	def script_volume_changed(self, gesture):
 		gesture.send()
 		cancelSpeech()
 		ui.message(str(int(round(round(self.master_volume.GetMasterVolume(), 2)*100, 0)))+'%')
 	def script_move_to_app(self, gesture):
-		direction=1 if gesture.logIdentifier.split(':')[-1]=='rightArrow' else -1
+		direction=1 if gesture._get_identifiers()[1].split(':')[-1]=='rightArrow' else -1
 		l=len(self.apps)
 		i=self.app_index
 		i=i+1 if direction==1 else i-1
