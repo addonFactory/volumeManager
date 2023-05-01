@@ -19,50 +19,14 @@ from comtypes import CLSCTX_ALL
 from ctypes import POINTER, cast
 import globalPluginHandler
 import gui
-from gui.guiHelper import BoxSizerHelper
 from speech import cancelSpeech
 import tones
 import ui
-import wx
 from .pycaw import AudioUtilities, IAudioEndpointVolume
 
+from .interface import ChangeVolumeDialog
+
 addonHandler.initTranslation()
-
-
-class Change_volume_dialog(wx.Dialog):
-    def __init__(self, parent=None, value=100):
-        super().__init__(parent, title=_("Set volume"))
-        mainSizer = wx.BoxSizer(wx.VERTICAL)
-        sHelper = BoxSizerHelper(self, wx.VERTICAL)
-        self.volume_field = sHelper.addLabeledControl(_("Volume"), gui.nvdaControls.SelectOnFocusSpinCtrl, min=0, max=100, initial=value, style=wx.SP_ARROW_KEYS|wx.TE_PROCESS_ENTER)
-        self.volume_field.Bind(wx.EVT_TEXT_ENTER, self.on_enter)
-        buttonGroup = gui.guiHelper.ButtonHelper(wx.VERTICAL)
-        ok_btn = buttonGroup.addButton(self, wx.ID_OK, label=_("OK"))
-        ok_btn.Bind(wx.EVT_BUTTON, self.on_ok)
-        cancel_btn = buttonGroup.addButton(self, wx.ID_CANCEL, label=_("Cancel"))
-        cancel_btn.Bind(wx.EVT_BUTTON, self.on_cancel)
-        sHelper.addItem(buttonGroup)
-        mainSizer.Add(sHelper.sizer, border=10, flag=wx.ALL)
-        mainSizer.Fit(self)
-        self.SetSizer(mainSizer)
-        self.Bind(wx.EVT_CLOSE, self.on_close)
-
-    def on_enter(self, event):
-        self.set()
-        self.Close()
-
-    def on_ok(self, event):
-        self.set()
-        event.Skip()
-
-    def on_cancel(self, event):
-        self.set_all_gestures()
-        event.Skip()
-
-    on_close = on_cancel
-
-    def set(self):
-        self.callback(self.volume_field.GetValue())
 
 
 class GlobalPlugin(globalPluginHandler.GlobalPlugin):
@@ -72,8 +36,6 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
         self.app_index = 0
         self.initialize()
         self.current_app = self.master_volume
-        Change_volume_dialog.callback = self.set_volume
-        Change_volume_dialog.set_all_gestures = self.set_all_gestures
         self.standard_gestures = {"kb:nvda+shift+v": "turn", "kb:volumeDown": "volume_changed", "kb:volumeUp": "volume_changed"}
         self.gestures = {"kb:leftArrow": "move_to_app", "kb:rightArrow": "move_to_app", "kb:upArrow": "change_volume", "kb:downArrow": "change_volume", "kb:space": "set_volume", "kb:m": "mute_app", "kb:r": "reload"}
         self.set_standard_gestures()
@@ -126,7 +88,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
     def script_set_volume(self, gesture):
         self.clearGestureBindings()
-        gui.mainFrame._popupSettingsDialog(Change_volume_dialog, int(round(round(self.current_app.GetMasterVolume(), 2) * 100, 0)))
+        currentValue = int(round(round(self.current_app.GetMasterVolume(), 2) * 100, 0))
+        gui.mainFrame._popupSettingsDialog(ChangeVolumeDialog, self, value=currentValue)
 
     def set_volume(self, volume):
         self.current_app.SetMasterVolume(volume / 100.0, None)
