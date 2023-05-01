@@ -19,10 +19,16 @@ from comtypes import CLSCTX_ALL
 from ctypes import POINTER, cast
 import globalPluginHandler
 import gui
+import os
 from speech import cancelSpeech
+import sys
 import tones
 import ui
-from .pycaw import AudioUtilities, IAudioEndpointVolume
+
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from . import pycaw
+from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
+del sys.path[-1]
 
 from .interface import ChangeVolumeDialog
 
