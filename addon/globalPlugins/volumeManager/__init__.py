@@ -27,6 +27,7 @@ import ui
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from . import pycaw
+from pycaw.callbacks import MMNotificationClient
 from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
 del sys.path[-1]
 
@@ -34,6 +35,13 @@ from .interface import ChangeVolumeDialog
 
 addonHandler.initTranslation()
 
+class NotificationCallback(MMNotificationClient):
+    def __init__(self, pluginInstance):
+        self.pluginInstance = pluginInstance
+
+    def on_device_state_changed(self, device_id, new_state, new_state_id):
+        if new_state_id != 8: return
+        self.pluginInstance.initialize()
 
 class GlobalPlugin(globalPluginHandler.GlobalPlugin):
     def __init__(self, *args, **kwargs):
@@ -43,8 +51,15 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
         self.initialize()
         self.current_app = self.master_volume
         self.standard_gestures = {"kb:nvda+shift+v": "turn", "kb:volumeDown": "volume_changed", "kb:volumeUp": "volume_changed"}
-        self.gestures = {"kb:leftArrow": "move_to_app", "kb:rightArrow": "move_to_app", "kb:upArrow": "change_volume", "kb:downArrow": "change_volume", "kb:space": "set_volume", "kb:m": "mute_app", "kb:r": "reload"}
+        self.gestures = {"kb:leftArrow": "move_to_app", "kb:rightArrow": "move_to_app", "kb:upArrow": "change_volume", "kb:downArrow": "change_volume", "kb:space": "set_volume", "kb:m": "mute_app"}
         self.set_standard_gestures()
+        self.deviceEnumerator = AudioUtilities.GetDeviceEnumerator()
+        self.notificationCallback = NotificationCallback(self)
+        self.deviceEnumerator.RegisterEndpointNotificationCallback(self.notificationCallback)
+
+    def terminate(self):
+        super().terminate()
+        self.deviceEnumerator.UnregisterEndpointNotificationCallback(self.notificationCallback)
 
     def initialize(self):
         devices = AudioUtilities.GetSpeakers()
@@ -53,10 +68,6 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
         self.master_volume.SetMasterVolume = self.master_volume.SetMasterVolumeLevelScalar
         self.master_volume.GetMasterVolume = self.master_volume.GetMasterVolumeLevelScalar
         self.master_volume.name = _("Master volume")
-
-    def script_reload(self, gesture):
-        self.initialize()
-        ui.message(_("Reloaded."))
 
     def script_change_volume(self, gesture):
         direction = 1 if gesture._get_identifiers()[1].split(":")[-1] == "upArrow" else - 1
