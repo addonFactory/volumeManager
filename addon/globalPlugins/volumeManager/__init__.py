@@ -4,16 +4,7 @@
 # Authors: Danstiv, Beqa gozalishvili
 # Copyright 2019-2023, released under GPL.
 
-from nvdaBuiltin.appModules import explorer
 
-
-def event_UIA_notification(self, obj, next, **kwargs):
-    if "displayString" in kwargs and kwargs["displayString"] == "уровень громкос":
-        return
-    next()
-
-
-explorer.AppModule.event_UIA_notification = event_UIA_notification
 import addonHandler
 from comtypes import CLSCTX_ALL
 from ctypes import POINTER, cast
@@ -36,6 +27,7 @@ from .interface import ChangeVolumeDialog
 addonHandler.initTranslation()
 
 class NotificationCallback(MMNotificationClient):
+
     def __init__(self, pluginInstance):
         self.pluginInstance = pluginInstance
 
@@ -44,6 +36,7 @@ class NotificationCallback(MMNotificationClient):
         self.pluginInstance.initialize()
 
 class GlobalPlugin(globalPluginHandler.GlobalPlugin):
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.enabled = False
@@ -68,6 +61,11 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
         self.master_volume.SetMasterVolume = self.master_volume.SetMasterVolumeLevelScalar
         self.master_volume.GetMasterVolume = self.master_volume.GetMasterVolumeLevelScalar
         self.master_volume.name = _("Master volume")
+
+    def event_UIA_notification(self, obj, next, **kwargs):
+        if obj.appModule.appName == 'explorer' and "activityId" in kwargs and kwargs["activityId"] == "Windows.Shell.VolumeAnnouncement":
+            return
+        next()
 
     def script_change_volume(self, gesture):
         direction = 1 if gesture._get_identifiers()[1].split(":")[-1] == "upArrow" else - 1
