@@ -16,11 +16,9 @@ import sys
 import tones
 import ui
 
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from . import pycaw
 from .pycaw.callbacks import MMNotificationClient
 from .pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
-del sys.path[-1]
 
 from .interface import ChangeVolumeDialog
 
