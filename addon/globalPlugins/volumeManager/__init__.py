@@ -16,9 +16,10 @@ import sys
 import tones
 import ui
 
-from . import pycaw
-from .pycaw.callbacks import MMNotificationClient
-from .pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
+import pycaw
+from pycaw.api.endpointvolume import IAudioEndpointVolume
+from pycaw.callbacks import MMNotificationClient
+from pycaw.utils import AudioUtilities
 
 from .interface import ChangeVolumeDialog
 
