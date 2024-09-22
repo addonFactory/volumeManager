@@ -1,11 +1,9 @@
-# -*- coding: utf-8 -*-
-
 # VolumeManager NVDA addon
 # Authors: Danstiv, Beqa gozalishvili
 # Copyright 2023, released under GPL.
 
-from gui import guiHelper, nvdaControls
 import wx
+from gui import guiHelper, nvdaControls
 
 
 class ChangeVolumeDialog(wx.Dialog):
@@ -14,7 +12,14 @@ class ChangeVolumeDialog(wx.Dialog):
         self.pluginInstance = pluginInstance
         mainSizer = wx.BoxSizer(wx.VERTICAL)
         sHelper = guiHelper.BoxSizerHelper(self, wx.VERTICAL)
-        self.volume_field = sHelper.addLabeledControl(_("Volume"), nvdaControls.SelectOnFocusSpinCtrl, min=0, max=100, initial=value, style=wx.SP_ARROW_KEYS|wx.TE_PROCESS_ENTER)
+        self.volume_field = sHelper.addLabeledControl(
+            _("Volume"),
+            nvdaControls.SelectOnFocusSpinCtrl,
+            min=0,
+            max=100,
+            initial=value,
+            style=wx.SP_ARROW_KEYS | wx.TE_PROCESS_ENTER,
+        )
         self.volume_field.Bind(wx.EVT_TEXT_ENTER, self.on_enter)
         buttonGroup = guiHelper.ButtonHelper(wx.VERTICAL)
         ok_btn = buttonGroup.addButton(self, wx.ID_OK, label=_("OK"))
