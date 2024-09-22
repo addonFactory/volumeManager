@@ -1,0 +1,11 @@
+{
+    "python.autoComplete.extraPaths": [
+        "../nvda/source",
+        "../nvda/miscDeps/python"
+    ],
+    "python.analysis.extraPaths": [
+        "../nvda/source",
+        "../nvda/miscDeps/python"
+    ],
+    "python.analysis.stubPath": "${workspaceFolder}/.vscode/typings",
+}
