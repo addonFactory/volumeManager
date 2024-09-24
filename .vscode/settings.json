@@ -5,7 +5,23 @@
     ],
     "python.analysis.extraPaths": [
         "../nvda/source",
-        "../nvda/miscDeps/python"
+        "../nvda/miscDeps/python",
+        "addon/globalPlugins"
     ],
     "python.analysis.stubPath": "${workspaceFolder}/.vscode/typings",
+    "pylint.args": [
+        "--disable=all",
+        "--enable=C0103",
+        "--argument-rgx=[a-z_][a-zA-Z0-9]{0,40}$",
+        "--attr-rgx=[a-z_][a-zA-Z0-9]{0,40}$",
+        "--class-attribute-rgx=[a-z_][a-zA-Z0-9]{0,40}$",
+        "--function-rgx=[a-z_][a-zA-Z0-9]{0,40}$",
+        "--method-rgx=(__)?((?:event|script)_)?(UIA_)?[a-z_][a-zA-Z0-9]{0,40}(__)?$",
+        "--module-rgx=[a-z_][a-zA-Z0-9]{0,40}$",
+        "--variable-rgx=[a-z_][a-zA-Z0-9]{0,40}$"
+    ],
+    "pylint.severity": {
+        "convention": "Warning"
+    },
+    "pylint.lintOnChange": true,
 }
