@@ -11,8 +11,8 @@ class ChangeVolumeDialog(wx.Dialog):
         super().__init__(parent, title=_("Set volume"))
         self.pluginInstance = pluginInstance
         mainSizer = wx.BoxSizer(wx.VERTICAL)
-        sHelper = guiHelper.BoxSizerHelper(self, wx.VERTICAL)
-        self.volume_field = sHelper.addLabeledControl(
+        sizerHelper = guiHelper.BoxSizerHelper(self, wx.VERTICAL)
+        self.volumeField = sizerHelper.addLabeledControl(
             _("Volume"),
             nvdaControls.SelectOnFocusSpinCtrl,
             min=0,
@@ -20,31 +20,31 @@ class ChangeVolumeDialog(wx.Dialog):
             initial=value,
             style=wx.SP_ARROW_KEYS | wx.TE_PROCESS_ENTER,
         )
-        self.volume_field.Bind(wx.EVT_TEXT_ENTER, self.on_enter)
+        self.volumeField.Bind(wx.EVT_TEXT_ENTER, self.onEnter)
         buttonGroup = guiHelper.ButtonHelper(wx.VERTICAL)
-        ok_btn = buttonGroup.addButton(self, wx.ID_OK, label=_("OK"))
-        ok_btn.Bind(wx.EVT_BUTTON, self.on_ok)
-        cancel_btn = buttonGroup.addButton(self, wx.ID_CANCEL, label=_("Cancel"))
-        cancel_btn.Bind(wx.EVT_BUTTON, self.on_cancel)
-        sHelper.addItem(buttonGroup)
-        mainSizer.Add(sHelper.sizer, border=10, flag=wx.ALL)
+        okBtn = buttonGroup.addButton(self, wx.ID_OK, label=_("OK"))
+        okBtn.Bind(wx.EVT_BUTTON, self.onOk)
+        cancelBtn = buttonGroup.addButton(self, wx.ID_CANCEL, label=_("Cancel"))
+        cancelBtn.Bind(wx.EVT_BUTTON, self.onCancel)
+        sizerHelper.addItem(buttonGroup)
+        mainSizer.Add(sizerHelper.sizer, border=10, flag=wx.ALL)
         mainSizer.Fit(self)
         self.SetSizer(mainSizer)
-        self.Bind(wx.EVT_CLOSE, self.on_close)
+        self.Bind(wx.EVT_CLOSE, self.onClose)
 
-    def on_enter(self, event):
+    def onEnter(self, event):
         self.set()
         self.Close()
 
-    def on_ok(self, event):
+    def onOk(self, event):
         self.set()
         event.Skip()
 
-    def on_cancel(self, event):
-        self.pluginInstance.set_all_gestures()
+    def onCancel(self, event):
+        self.pluginInstance.setOverlayGestures()
         event.Skip()
 
-    on_close = on_cancel
+    onClose = onCancel
 
     def set(self):
-        self.pluginInstance.set_volume(self.volume_field.GetValue())
+        self.pluginInstance.setVolume(self.volumeField.GetValue())

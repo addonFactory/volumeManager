@@ -1,6 +1,6 @@
 # VolumeManager NVDA addon
 # Authors: Danstiv, Beqa gozalishvili
-# Copyright 2019-2023, released under GPL.
+# Copyright 2019-2024, released under GPL.
 
 
 from ctypes import POINTER, cast
@@ -12,44 +12,37 @@ import tones
 import ui
 from comtypes import CLSCTX_ALL
 from pycaw.api.endpointvolume import IAudioEndpointVolume
-from pycaw.callbacks import MMNotificationClient
 from pycaw.utils import AudioUtilities
 from speech import cancelSpeech
 
 from .interface import ChangeVolumeDialog
+from .notification_callback import NotificationCallback
+from .utils import doc
 
 addonHandler.initTranslation()
-
-
-class NotificationCallback(MMNotificationClient):
-    def __init__(self, pluginInstance):
-        self.pluginInstance = pluginInstance
-
-    def on_device_state_changed(self, device_id, new_state, new_state_id):
-        self.pluginInstance.initialize()
 
 
 class GlobalPlugin(globalPluginHandler.GlobalPlugin):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.enabled = False
-        self.app_index = 0
+        self.overlayActive = False
+        self.currentAppIndex = 0
         self.initialize()
-        self.current_app = self.master_volume
-        self.standard_gestures = {
-            "kb:nvda+shift+v": "turn",
-            "kb:volumeDown": "volume_changed",
-            "kb:volumeUp": "volume_changed",
+        self.currentApp = self.masterVolume
+        self.baseGestures = {
+            "kb:nvda+shift+v": "toggleOverlay",
+            "kb:volumeDown": "onVolumeDown",
+            "kb:volumeUp": "onVolumeUp",
         }
-        self.gestures = {
-            "kb:leftArrow": "move_to_app",
-            "kb:rightArrow": "move_to_app",
-            "kb:upArrow": "change_volume",
-            "kb:downArrow": "change_volume",
-            "kb:space": "set_volume",
-            "kb:m": "mute_app",
+        self.overlayGestures = {
+            "kb:leftArrow": "moveToPreviousApp",
+            "kb:rightArrow": "moveToNextApp",
+            "kb:downArrow": "decreaseVolume",
+            "kb:upArrow": "increaseVolume",
+            "kb:space": "setVolume",
+            "kb:m": "muteApp",
         }
-        self.set_standard_gestures()
+        self.setBaseGestures()
         self.deviceEnumerator = AudioUtilities.GetDeviceEnumerator()
         self.notificationCallback = NotificationCallback(self)
         self.deviceEnumerator.RegisterEndpointNotificationCallback(
@@ -65,14 +58,10 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
     def initialize(self):
         devices = AudioUtilities.GetSpeakers()
         interface = devices.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
-        self.master_volume = cast(interface, POINTER(IAudioEndpointVolume))
-        self.master_volume.SetMasterVolume = (
-            self.master_volume.SetMasterVolumeLevelScalar
-        )
-        self.master_volume.GetMasterVolume = (
-            self.master_volume.GetMasterVolumeLevelScalar
-        )
-        self.master_volume.name = _("Master volume")
+        self.masterVolume = cast(interface, POINTER(IAudioEndpointVolume))
+        self.masterVolume.SetMasterVolume = self.masterVolume.SetMasterVolumeLevelScalar
+        self.masterVolume.GetMasterVolume = self.masterVolume.GetMasterVolumeLevelScalar
+        self.masterVolume.name = _("Master volume")
 
     def event_UIA_notification(self, obj, next, **kwargs):
         if (
@@ -83,98 +72,94 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
             return
         next()
 
-    def script_change_volume(self, gesture):
-        direction = (
-            1 if gesture._get_identifiers()[1].split(":")[-1] == "upArrow" else -1
-        )
-        volume = round(self.current_app.GetMasterVolume(), 2)
-        if direction == 1:
-            if volume >= 1.0:
-                tones.beep(500, 100)
-                return
-            volume += 0.01
-        else:
-            if volume <= 0.0:
-                tones.beep(200, 100)
-                return
-            volume -= 0.01
-        self.current_app.SetMasterVolume(volume, None)
-        ui.message(str(int(round(volume * 100, 0))) + "%")
+    @doc(_("Decrease volume"))
+    def script_decreaseVolume(self, gesture):
+        self.changeVolume(-1)
 
-    def script_volume_changed(self, gesture):
-        gesture.send()
+    @doc(_("Increase volume"))
+    def script_increaseVolume(self, gesture):
+        self.changeVolume(1)
+
+    def changeVolume(self, amount):
+        """amount - relative percentage."""
+        oldVolume = round(self.currentApp.GetMasterVolume(), 2)
+        newVolume = round(oldVolume + amount / 100, 2)
+        newVolume = max(0, min(1, newVolume))
+        if oldVolume == newVolume:
+            tones.beep(200 if amount < 0 else 500, 100)
+            return
+        self.currentApp.SetMasterVolume(newVolume, None)
+        ui.message(str(round(newVolume * 100)) + "%")
+
+    def script_onVolumeDown(self, gesture):
+        self.masterVolume.VolumeStepDown(None)
+        self.announceCurrentVolume()
+
+    def script_onVolumeUp(self, gesture):
+        self.masterVolume.VolumeStepUp(None)
+        self.announceCurrentVolume()
+
+    def announceCurrentVolume(self):
         cancelSpeech()
+        ui.message(f"{round(self.masterVolume.GetMasterVolume()*100)} %")
+
+    @doc(_("Previous app"))
+    def script_moveToPreviousApp(self, gesture):
+        self.changeApp(-1)
+
+    @doc(_("Next app"))
+    def script_moveToNextApp(self, gesture):
+        self.changeApp(1)
+
+    def changeApp(self, offset):
+        self.currentAppIndex = (self.currentAppIndex + offset) % len(self.apps)
+        self.currentApp = self.apps[self.currentAppIndex]
         ui.message(
-            str(int(round(round(self.master_volume.GetMasterVolume(), 2) * 100, 0)))
-            + "%"
+            f"{self.currentApp.name} {round(self.currentApp.GetMasterVolume() * 100)}%"
         )
 
-    def script_move_to_app(self, gesture):
-        direction = (
-            1 if gesture._get_identifiers()[1].split(":")[-1] == "rightArrow" else -1
-        )
-        l = len(self.apps)
-        i = self.app_index
-        i = i + 1 if direction == 1 else i - 1
-        if i < 0:
-            i = l - 1
-        if i >= l:
-            i = 0
-        self.app_index = i
-        self.current_app = self.apps[self.app_index]
-        ui.message(
-            self.current_app.name
-            + " "
-            + str(int(round(round(self.current_app.GetMasterVolume(), 2) * 100, 0)))
-            + " %"
-        )
-
-    def script_set_volume(self, gesture):
+    def script_setVolume(self, gesture):
         self.clearGestureBindings()
-        currentValue = int(round(round(self.current_app.GetMasterVolume(), 2) * 100, 0))
+        currentValue = round(self.currentApp.GetMasterVolume() * 100)
         gui.mainFrame._popupSettingsDialog(ChangeVolumeDialog, self, value=currentValue)
 
-    def set_volume(self, volume):
-        self.current_app.SetMasterVolume(volume / 100.0, None)
-        self.set_all_gestures()
+    def setVolume(self, volume):
+        self.currentApp.SetMasterVolume(volume / 100, None)
+        self.setOverlayGestures()
 
-    def script_mute_app(self, gesture):
-        muteState = self.current_app.GetMute()
-        if muteState == 0:
-            self.current_app.SetMute(1, None)
-            ui.message(_("muted"))
-        elif muteState == 1:
-            self.current_app.SetMute(0, None)
-            ui.message(_("unmuted"))
+    def script_muteApp(self, gesture):
+        isMuted = not self.currentApp.GetMute()
+        self.currentApp.SetMute(isMuted, None)
+        ui.message(_("muted") if isMuted else _("unmuted"))
 
-    def script_turn(self, gesture):
-        self.enabled = not self.enabled
-        if not self.enabled:
+    def script_toggleOverlay(self, gesture):
+        self.overlayActive = not self.overlayActive
+        if not self.overlayActive:
             tones.beep(440, 100)
-            self.set_standard_gestures()
+            self.setBaseGestures()
             return
-        all_sessions = AudioUtilities.GetAllSessions()
+        allSessions = AudioUtilities.GetAllSessions()
         self.apps = []
-        del self.app_index
-        self.apps.append(self.master_volume)
-        for session in all_sessions:
+        self.currentAppIndex = 0
+        self.apps.append(self.masterVolume)
+        for session in allSessions:
             if session.Process:
                 s = session.SimpleAudioVolume
                 s.name = session.DisplayName or session.Process.name()
                 self.apps.append(s)
-                if s.name == self.current_app.name:
-                    self.app_index = len(self.apps) - 1
+                if s.name == self.currentApp.name:
+                    self.currentAppIndex = len(self.apps) - 1
         if not hasattr(self, "app_index"):
-            self.app_index = 0
-        self.current_app = self.apps[self.app_index]
+            self.currentAppIndex = 0
+        self.currentApp = self.apps[self.currentAppIndex]
         tones.beep(660, 100)
-        self.set_all_gestures()
+        self.setOverlayGestures()
 
-    def set_standard_gestures(self):
+    def setBaseGestures(self):
         self.clearGestureBindings()
-        self.bindGestures(self.standard_gestures)
+        self.bindGestures(self.baseGestures)
 
-    def set_all_gestures(self):
+    def setOverlayGestures(self):
         self.clearGestureBindings()
-        self.bindGestures(self.standard_gestures)
-        self.bindGestures(self.gestures)
+        self.bindGestures(self.baseGestures)
+        self.bindGestures(self.overlayGestures)
