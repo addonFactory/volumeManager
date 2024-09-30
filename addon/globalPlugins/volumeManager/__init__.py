@@ -11,9 +11,9 @@ from pycaw.utils import AudioUtilities
 from speech import cancelSpeech
 
 from .audioManager import AudioManager
+from .constants import BASE_GESTURES, OVERLAY_GESTURES, VOLUME_CHANGE_AMOUNT_MAP
 from .interface import ChangeVolumeDialog
 from .notification_callback import NotificationCallback
-from .utils import doc
 
 addonHandler.initTranslation()
 
@@ -24,21 +24,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
         self.overlayActive = False
         self.currentAppIndex = 0
         self.audioManager = AudioManager()
-        self.initialize()
+        self.initializeMasterVolume()
         self.currentApp = self.masterVolume
-        self.baseGestures = {
-            "kb:nvda+shift+v": "toggleOverlay",
-            "kb:volumeDown": "onVolumeDown",
-            "kb:volumeUp": "onVolumeUp",
-        }
-        self.overlayGestures = {
-            "kb:leftArrow": "moveToPreviousApp",
-            "kb:rightArrow": "moveToNextApp",
-            "kb:downArrow": "decreaseVolume",
-            "kb:upArrow": "increaseVolume",
-            "kb:space": "setVolume",
-            "kb:m": "muteApp",
-        }
         self.setBaseGestures()
         self.deviceEnumerator = AudioUtilities.GetDeviceEnumerator()
         self.notificationCallback = NotificationCallback(self)
@@ -46,7 +33,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
             self.notificationCallback
         )
 
-    def initialize(self):
+    def initializeMasterVolume(self):
         self.masterVolume = self.audioManager.getMasterVolume()
 
     def terminate(self):
@@ -64,16 +51,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
             return
         next()
 
-    @doc(_("Decrease volume"))
-    def script_decreaseVolume(self, gesture):
-        self.changeVolume(-1)
-
-    @doc(_("Increase volume"))
-    def script_increaseVolume(self, gesture):
-        self.changeVolume(1)
-
-    def changeVolume(self, amount):
-        """amount - relative percentage."""
+    def script_changeVolume(self, gesture):
+        amount = VOLUME_CHANGE_AMOUNT_MAP[gesture.mainKeyName]
         oldVolume = self.currentApp.volume
         newVolume = oldVolume + amount
         newVolume = max(0, min(100, newVolume))
@@ -96,20 +75,13 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
         cancelSpeech()
         ui.message(f"{self.masterVolume.volume}%")
 
-    @doc(_("Previous app"))
-    def script_moveToPreviousApp(self, gesture):
-        self.changeApp(-1)
-
-    @doc(_("Next app"))
-    def script_moveToNextApp(self, gesture):
-        self.changeApp(1)
-
-    def changeApp(self, offset):
+    def script_switchToApp(self, gesture):
+        offset = -1 if gesture.mainKeyName == "leftArrow" else 1
         self.currentAppIndex = (self.currentAppIndex + offset) % len(self.apps)
         self.currentApp = self.apps[self.currentAppIndex]
         ui.message(f"{self.currentApp.name} {self.currentApp.volume}%")
 
-    def script_setVolume(self, gesture):
+    def script_openSetVolumeDialog(self, gesture):
         self.clearGestureBindings()
         currentValue = self.currentApp.volume
         gui.mainFrame._popupSettingsDialog(ChangeVolumeDialog, self, value=currentValue)
@@ -140,9 +112,9 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
     def setBaseGestures(self):
         self.clearGestureBindings()
-        self.bindGestures(self.baseGestures)
+        self.bindGestures(BASE_GESTURES)
 
     def setOverlayGestures(self):
         self.clearGestureBindings()
-        self.bindGestures(self.baseGestures)
-        self.bindGestures(self.overlayGestures)
+        self.bindGestures(BASE_GESTURES)
+        self.bindGestures(OVERLAY_GESTURES)
