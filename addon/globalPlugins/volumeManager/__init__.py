@@ -53,8 +53,15 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
     def script_changeVolume(self, gesture):
         amount = VOLUME_CHANGE_AMOUNT_MAP[gesture.mainKeyName]
+        self.changeVolume(amount)
+
+    def script_setVolume(self, gesture):
+        amount = int(gesture.mainKeyName) * 10
+        self.changeVolume(amount, False)
+
+    def changeVolume(self, amount, relative=True):
         oldVolume = self.currentApp.volume
-        newVolume = oldVolume + amount
+        newVolume = oldVolume + amount if relative else amount
         newVolume = max(0, min(100, newVolume))
         if oldVolume == newVolume:
             tones.beep(200 if amount < 0 else 500, 100)
