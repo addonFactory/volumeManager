@@ -8,10 +8,12 @@ import gui
 import tones
 import ui
 from pycaw.utils import AudioUtilities
+from scriptHandler import getLastScriptRepeatCount
 from speech import cancelSpeech
 
-from .audioManager import AudioManager
+from .audioManager import AudioManager, DeviceSession
 from .constants import BASE_GESTURES, OVERLAY_GESTURES, VOLUME_CHANGE_AMOUNT_MAP
+from .enums import DeviceType
 from .interface import ChangeVolumeDialog
 from .notification_callback import NotificationCallback
 
@@ -21,11 +23,16 @@ addonHandler.initTranslation()
 class GlobalPlugin(globalPluginHandler.GlobalPlugin):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.overlayActive = False
-        self.currentAppIndex = 0
         self.audioManager = AudioManager()
-        self.initializeMasterVolume()
-        self.currentApp = self.masterVolume
+        self.fetchDevices()
+        self.sessions = [self.outputDeviceSession]
+        self.currentSession = None
+        self.currentSessionIndex = 0
+        self.currentSessionDevices = []
+        self.currentSessionDeviceIndex = 0
+        self.deviceType = DeviceType.OUTPUT
+        self.switchSession(0)
+        self.overlayActive = False
         self.setBaseGestures()
         self.deviceEnumerator = AudioUtilities.GetDeviceEnumerator()
         self.notificationCallback = NotificationCallback(self)
@@ -33,8 +40,21 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
             self.notificationCallback
         )
 
-    def initializeMasterVolume(self):
-        self.masterVolume = self.audioManager.getMasterVolume()
+    @staticmethod
+    def getDeviceName(device):
+        return device.name if device is not None else _("Default device")
+
+    def fetchDevices(self):
+        self.inputDevice = self.audioManager.getDefaultInputDevice()
+        self.outputDevice = self.audioManager.getDefaultOutputDevice()
+        self.inputDevices = self.audioManager.getInputDevices()
+        self.outputDevices = self.audioManager.getOutputDevices()
+        self.outputDeviceSession = DeviceSession(
+            _("Output device"), self.outputDevice, DeviceType.OUTPUT
+        )
+        self.inputDeviceSession = DeviceSession(
+            _("Input device"), self.inputDevice, DeviceType.INPUT
+        )
 
     def terminate(self):
         super().terminate()
@@ -60,46 +80,123 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
         self.changeVolume(amount, False)
 
     def changeVolume(self, amount, relative=True):
-        oldVolume = self.currentApp.volume
+        oldVolume = self.currentSession.volume
         newVolume = oldVolume + amount if relative else amount
         newVolume = max(0, min(100, newVolume))
         if oldVolume == newVolume:
             tones.beep(200 if amount < 0 else 500, 100)
             return
-        self.currentApp.volume = newVolume
+        self.currentSession.volume = newVolume
         ui.message(f"{newVolume}%")
 
     def script_onVolumeDown(self, gesture):
-        self.masterVolume.session.VolumeStepDown(None)
+        self.outputDeviceSession.session.VolumeStepDown(None)
         self.onSystemVolumeChange()
 
     def script_onVolumeUp(self, gesture):
-        self.masterVolume.session.VolumeStepUp(None)
+        self.outputDeviceSession.session.VolumeStepUp(None)
         self.onSystemVolumeChange()
 
     def onSystemVolumeChange(self):
         # NVDA ignores multimedia keys and does not stop speech.
         cancelSpeech()
-        ui.message(f"{self.masterVolume.volume}%")
+        ui.message(f"{self.outputDeviceSession.volume}%")
 
-    def script_switchToApp(self, gesture):
+    def script_switchSession(self, gesture):
         offset = -1 if gesture.mainKeyName == "leftArrow" else 1
-        self.currentAppIndex = (self.currentAppIndex + offset) % len(self.apps)
-        self.currentApp = self.apps[self.currentAppIndex]
-        ui.message(f"{self.currentApp.name} {self.currentApp.volume}%")
+        newSessionIndex = (self.currentSessionIndex + offset) % len(self.sessions)
+        self.switchSession(newSessionIndex)
+        if isinstance(self.currentSession, DeviceSession):
+            device = self.currentSession.device
+        else:
+            device = (
+                self.currentSession.inputDevice
+                if self.deviceType == DeviceType.INPUT
+                else self.currentSession.outputDevice
+            )
+        deviceName = self.getDeviceName(device)
+        ui.message(
+            f"{self.currentSession.name} {self.currentSession.volume}% - {deviceName}"
+        )
+
+    def switchSession(self, sessionIndex):
+        self.currentSessionIndex = sessionIndex
+        self.currentSession = self.sessions[self.currentSessionIndex]
+        self.currentSessionDevices = []
+        self.currentSessionDeviceIndex = 0
+        if isinstance(self.currentSession, DeviceSession):
+            deviceType = self.currentSession.deviceType
+            currentSessionDevice = self.currentSession.device
+        else:
+            self.currentSessionDevices = [None]  # Default audio device
+            deviceType = self.deviceType
+            currentSessionDevice = (
+                self.currentSession.inputDevice
+                if deviceType == DeviceType.INPUT
+                else self.currentSession.outputDevice
+            )
+        self.currentSessionDevices.extend(
+            self.inputDevices if deviceType == DeviceType.INPUT else self.outputDevices
+        )
+        for i, device in enumerate(self.currentSessionDevices):
+            if device == currentSessionDevice:
+                self.currentSessionDeviceIndex = i
+                break
 
     def script_openSetVolumeDialog(self, gesture):
         self.clearGestureBindings()
-        currentValue = self.currentApp.volume
+        currentValue = self.currentSession.volume
         gui.mainFrame._popupSettingsDialog(ChangeVolumeDialog, self, value=currentValue)
 
     def setVolume(self, volume):
-        self.currentApp.volume = volume
+        self.currentSession.volume = volume
         self.setOverlayGestures()
 
-    def script_muteApp(self, gesture):
-        self.currentApp.muted = not self.currentApp.muted
-        ui.message(_("muted") if self.currentApp.muted else _("unmuted"))
+    def script_muteSession(self, gesture):
+        self.currentSession.muted = not self.currentSession.muted
+        ui.message(_("muted") if self.currentSession.muted else _("unmuted"))
+
+    def script_cycleDeviceTypes(self, gesture):
+        value = (self.deviceType.value + 1) % len(DeviceType)
+        self.deviceType = DeviceType(value)
+        self.switchSession(self.currentSessionIndex)
+        ui.message(
+            _("Input devices")
+            if self.deviceType == DeviceType.INPUT
+            else _("Output devices")
+        )
+
+    def script_switchDevice(self, gesture):
+        offset = -1 if gesture.mainKeyName == "upArrow" else 1
+        oldIndex = self.currentSessionDeviceIndex
+        newIndex = max(0, min(len(self.currentSessionDevices) - 1, oldIndex + offset))
+        self.currentSessionDeviceIndex = newIndex
+        device = self.currentSessionDevices[self.currentSessionDeviceIndex]
+        ui.message(self.getDeviceName(device))
+        if oldIndex == newIndex:
+            tones.beep(200 if offset < 0 else 500, 50)
+
+    def script_setDevice(self, gesture):
+        newDevice = self.currentSessionDevices[self.currentSessionDeviceIndex]
+        if isinstance(self.currentSession, DeviceSession):
+            deviceAttributeName = "device"
+        else:
+            deviceAttributeName = (
+                "inputDevice" if self.deviceType == DeviceType.INPUT else "outputDevice"
+            )
+        currentDevice = getattr(self.currentSession, deviceAttributeName)
+        if currentDevice == newDevice:
+            tones.beep(350, 100)
+            return
+        setattr(self.currentSession, deviceAttributeName, newDevice)
+        ui.message(_("Applied"))
+
+    def script_resetConfiguration(self, gesture):
+        if getLastScriptRepeatCount() < 2:
+            ui.message(_("Press three times to reset device configuration"))
+            return
+        self.audioManager.resetConfiguration()
+        ui.message(_("Device configuration reset"))
 
     def script_toggleOverlay(self, gesture):
         self.overlayActive = not self.overlayActive
@@ -107,13 +204,17 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
             tones.beep(440, 100)
             self.setBaseGestures()
             return
-        self.apps = [self.masterVolume]
-        self.currentAppIndex = 0
-        for session in self.audioManager.getAllSessions():
-            self.apps.append(session)
-            if session.name == self.currentApp.name:
-                self.currentAppIndex = len(self.apps) - 1
-        self.currentApp = self.apps[self.currentAppIndex]
+        self.sessions = []
+        newSessionIndex = 0
+        for session in [
+            self.outputDeviceSession,
+            self.inputDeviceSession,
+            *self.audioManager.getAllSessions(),
+        ]:
+            self.sessions.append(session)
+            if session.name == self.currentSession.name:
+                newSessionIndex = len(self.sessions) - 1
+        self.switchSession(newSessionIndex)
         tones.beep(660, 100)
         self.setOverlayGestures()
 

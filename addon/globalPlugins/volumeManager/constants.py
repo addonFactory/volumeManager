@@ -5,10 +5,15 @@ BASE_GESTURES = {
 }
 
 OVERLAY_GESTURES = {
-    "kb:leftArrow": "switchToApp",
-    "kb:rightArrow": "switchToApp",
+    "kb:leftArrow": "switchSession",
+    "kb:rightArrow": "switchSession",
+    "kb:control+upArrow": "switchDevice",
+    "kb:control+downArrow": "switchDevice",
+    "kb:control+rightArrow": "setDevice",
     "kb:space": "openSetVolumeDialog",
-    "kb:m": "muteApp",
+    "kb:m": "muteSession",
+    "kb:d": "cycleDeviceTypes",
+    "kb:control+r": "resetConfiguration",
 }
 
 VOLUME_CHANGE_AMOUNT_MAP = {}
