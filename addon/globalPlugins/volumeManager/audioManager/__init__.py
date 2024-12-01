@@ -179,7 +179,7 @@ class AudioManager:
     def getAllSessions(self):
         sessions = []
         for session in AudioUtilities.GetAllSessions():
-            if not session.Process or not session.process.is_running():
+            if not session.Process or not session.Process.is_running():
                 continue
             sessions.append(AudioSession(session))
         return sessions
