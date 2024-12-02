@@ -11,6 +11,7 @@ from ctypes import (
 )
 from ctypes.wintypes import HANDLE, ULONG
 
+import winVersion
 from comtypes import COMMETHOD, GUID, HRESULT, IUnknown
 
 from .enums import EDataFlow, ERole, TrustLevel
@@ -32,7 +33,10 @@ PHSTRING = POINTER(HSTRING)
 FACTORY = POINTER(c_void_p)
 
 IID_IInspectable = GUID("{AF86E2E0-B12D-4C6A-9C5A-D7AA65101E90}")
-IID_IAudioPolicyConfig = GUID("{ab3d4648-e242-459f-b02f-541c70306324}")
+if winVersion.getWinVer().build >= 21390:
+    IID_IAudioPolicyConfig = GUID("{ab3d4648-e242-459f-b02f-541c70306324}")
+else:
+    IID_IAudioPolicyConfig = GUID("{2a59116d-6c4f-45e0-a74f-707e3fef9258}")
 AUDIO_POLICY_CONFIG_CLASS_NAME = "Windows.Media.Internal.AudioPolicyConfig"
 
 combase = windll.combase
