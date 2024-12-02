@@ -2,7 +2,12 @@ from comtypes import CLSCTX_ALL
 from pycaw.api.endpointvolume import IAudioEndpointVolume
 from pycaw.utils import AudioDevice, AudioUtilities
 
-from .pycawExt.constants import AUDIO_POLICY_DEVICE_ID_KEY, DEVICE_STATE_ACTIVE
+from .pycawExt.constants import (
+    DEVICE_STATE_ACTIVE,
+    INTERNAL_ID_AUDIO_CAPTURE_SUFFIX,
+    INTERNAL_ID_AUDIO_RENDER_SUFFIX,
+    INTERNAL_ID_PREFIX,
+)
 from .pycawExt.enums import EDataFlow, ERole
 from .pycawExt.iAudioPolicyConfig import (
     getAudioPolicyConfig,
@@ -13,12 +18,30 @@ from .pycawExt.iPolicyConfig import getPolicyConfig
 
 
 class AudioDevice(AudioDevice):
+    # Audio policy config ids to devices mapping.
+    _cachedDevices = {}
+
     def __eq__(self, other):
         return isinstance(other, AudioDevice) and self.id == other.id
 
     @property
     def name(self):
         return self.FriendlyName
+
+    @classmethod
+    def createDevice(cls, dev, flow: EDataFlow):
+        device = AudioUtilities.CreateDevice(dev)
+        device = cls(device.id, device.state, device.properties, device._dev)
+        if flow is EDataFlow.eRender:
+            internalIdSuffix = INTERNAL_ID_AUDIO_RENDER_SUFFIX
+        elif flow is EDataFlow.eCapture:
+            internalIdSuffix = INTERNAL_ID_AUDIO_CAPTURE_SUFFIX
+        else:
+            raise ValueError("Unknown flow")
+        internalId = f"{INTERNAL_ID_PREFIX}{device.id}{internalIdSuffix}"
+        device.internalId = internalId
+        cls._cachedDevices[internalId] = device
+        return device
 
 
 class AudioSession:
@@ -68,14 +91,12 @@ class AudioSession:
         if deviceId.value is None:
             return
         deviceId = hstringToString(deviceId)
-        if device := AudioManager._cachedDevices.get(deviceId, None):
+        if device := AudioDevice._cachedDevices.get(deviceId, None):
             return device
         raise RuntimeError("Device not found in cache")
 
     def _setDevice(self, device, flow):
-        deviceId = stringToHstring(
-            device.properties[AUDIO_POLICY_DEVICE_ID_KEY] if device else ""
-        )
+        deviceId = stringToHstring(device.internalId if device else "")
         for role in [ERole.eConsole, ERole.eCommunications, ERole.eMultimedia]:
             AudioManager.audioPolicyConfig.SetPersistedDefaultAudioEndpoint(
                 self.session.ProcessId, flow, role, deviceId
@@ -125,8 +146,6 @@ class DeviceSession(AudioSession):
 
 class AudioManager:
     deviceEnumerator = AudioUtilities.GetDeviceEnumerator()
-    # Audio policy config ids to devices mapping.
-    _cachedDevices = {}
     audioPolicyConfig = getAudioPolicyConfig()
     policyConfig = getPolicyConfig()
 
@@ -134,46 +153,41 @@ class AudioManager:
     def resetConfiguration(cls):
         cls.audioPolicyConfig.ClearAllPersistedApplicationDefaultEndpoints()
 
-    @classmethod
-    def createDevice(cls, dev):
-        device = AudioUtilities.CreateDevice(dev)
-        device = AudioDevice(device.id, device.state, device.properties, device._dev)
-        cls._cachedDevices[device.properties[AUDIO_POLICY_DEVICE_ID_KEY]] = device
-        return device
-
     def getDefaultInputDevice(self):
-        return self.createDevice(
+        return AudioDevice.createDevice(
             self.deviceEnumerator.GetDefaultAudioEndpoint(
                 EDataFlow.eCapture, ERole.eMultimedia
-            )
+            ),
+            EDataFlow.eCapture,
         )
 
     def getDefaultOutputDevice(self):
-        return self.createDevice(
+        return AudioDevice.createDevice(
             self.deviceEnumerator.GetDefaultAudioEndpoint(
                 EDataFlow.eRender, ERole.eMultimedia
-            )
+            ),
+            EDataFlow.eRender,
         )
 
     def getInputDevices(self):
         collection = self.deviceEnumerator.EnumAudioEndpoints(
             EDataFlow.eCapture, DEVICE_STATE_ACTIVE
         )
-        return self._getDevicesFromCollection(collection)
+        return self._getDevicesFromCollection(collection, EDataFlow.eCapture)
 
     def getOutputDevices(self):
         collection = self.deviceEnumerator.EnumAudioEndpoints(
             EDataFlow.eRender, DEVICE_STATE_ACTIVE
         )
-        return self._getDevicesFromCollection(collection)
+        return self._getDevicesFromCollection(collection, EDataFlow.eRender)
 
-    def _getDevicesFromCollection(self, collection):
+    def _getDevicesFromCollection(self, collection, flow: EDataFlow):
         devices = []
         count = collection.GetCount()
         for i in range(count):
             device = collection.Item(i)
             if device is not None:
-                devices.append(self.createDevice(device))
+                devices.append(AudioDevice.createDevice(device, flow))
         return devices
 
     def getAllSessions(self):
