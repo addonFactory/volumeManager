@@ -218,6 +218,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
         tones.beep(660, 100)
         self.setOverlayGestures()
 
+    script_toggleOverlay.__doc__ = _("Toggle Volume Manager virtual screen")
+
     def setBaseGestures(self):
         self.clearGestureBindings()
         self.bindGestures(BASE_GESTURES)
