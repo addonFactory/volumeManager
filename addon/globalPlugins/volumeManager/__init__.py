@@ -21,6 +21,8 @@ addonHandler.initTranslation()
 
 
 class GlobalPlugin(globalPluginHandler.GlobalPlugin):
+    scriptCategory = "Volume Manager"
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.audioManager = AudioManager()
