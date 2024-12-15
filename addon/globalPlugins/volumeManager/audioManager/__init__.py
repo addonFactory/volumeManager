@@ -16,6 +16,8 @@ from .pycawExt.iAudioPolicyConfig import (
 )
 from .pycawExt.iPolicyConfig import getPolicyConfig
 
+DefaultDevice = type("DefaultDevice", (), {})
+
 
 class AudioDevice(AudioDevice):
     # Audio policy config ids to devices mapping.
@@ -67,6 +69,8 @@ class AudioSession:
 
     @property
     def inputDevice(self):
+        if AudioManager.audioPolicyConfig is None:
+            return
         deviceId = AudioManager.audioPolicyConfig.GetPersistedDefaultAudioEndpoint(
             self.session.ProcessId, EDataFlow.eCapture, ERole.eMultimedia
         )
@@ -78,6 +82,8 @@ class AudioSession:
 
     @property
     def outputDevice(self):
+        if AudioManager.audioPolicyConfig is None:
+            return
         deviceId = AudioManager.audioPolicyConfig.GetPersistedDefaultAudioEndpoint(
             self.session.ProcessId, EDataFlow.eRender, ERole.eMultimedia
         )
@@ -89,13 +95,17 @@ class AudioSession:
 
     def _getDeviceById(self, deviceId):
         if deviceId.value is None:
-            return
+            return DefaultDevice
         deviceId = hstringToString(deviceId)
         if device := AudioDevice._cachedDevices.get(deviceId, None):
             return device
         raise RuntimeError("Device not found in cache")
 
     def _setDevice(self, device, flow):
+        if device is DefaultDevice:
+            device = None
+        if AudioManager.audioPolicyConfig is None:
+            raise RuntimeError
         deviceId = stringToHstring(device.internalId if device else "")
         for role in [ERole.eConsole, ERole.eCommunications, ERole.eMultimedia]:
             AudioManager.audioPolicyConfig.SetPersistedDefaultAudioEndpoint(
@@ -148,6 +158,11 @@ class AudioManager:
     deviceEnumerator = AudioUtilities.GetDeviceEnumerator()
     audioPolicyConfig = getAudioPolicyConfig()
     policyConfig = getPolicyConfig()
+
+    @classmethod
+    @property
+    def sessionDeviceSettingsIsSupported(cls):
+        return cls.audioPolicyConfig is not None
 
     @classmethod
     def resetConfiguration(cls):

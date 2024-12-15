@@ -11,13 +11,15 @@ from pycaw.utils import AudioUtilities
 from scriptHandler import getLastScriptRepeatCount
 from speech import cancelSpeech
 
-from .audioManager import AudioManager, DeviceSession
+from .audioManager import AudioManager, DefaultDevice, DeviceSession
 from .constants import BASE_GESTURES, OVERLAY_GESTURES, VOLUME_CHANGE_AMOUNT_MAP
 from .enums import DeviceType
 from .interface import ChangeVolumeDialog
 from .notification_callback import NotificationCallback
 
 addonHandler.initTranslation()
+
+FEATURE_NOT_SUPPORTED_TEXT = _("Action is not supported")
 
 
 class GlobalPlugin(globalPluginHandler.GlobalPlugin):
@@ -44,7 +46,11 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
     @staticmethod
     def getDeviceName(device):
-        return device.name if device is not None else _("Default device")
+        if device is DefaultDevice:
+            return _("Default device")
+        if device is None:
+            return
+        return device.name
 
     def fetchDevices(self):
         self.inputDevice = self.audioManager.getDefaultInputDevice()
@@ -117,9 +123,10 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
                 else self.currentSession.outputDevice
             )
         deviceName = self.getDeviceName(device)
-        ui.message(
-            f"{self.currentSession.name} {self.currentSession.volume}% - {deviceName}"
-        )
+        message = f"{self.currentSession.name} {self.currentSession.volume}%"
+        if deviceName is not None:
+            message += f" - {deviceName}"
+        ui.message(message)
 
     def switchSession(self, sessionIndex):
         self.currentSessionIndex = sessionIndex
@@ -130,13 +137,13 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
             deviceType = self.currentSession.deviceType
             currentSessionDevice = self.currentSession.device
         else:
-            self.currentSessionDevices = [None]  # Default audio device
             deviceType = self.deviceType
             currentSessionDevice = (
                 self.currentSession.inputDevice
                 if deviceType == DeviceType.INPUT
                 else self.currentSession.outputDevice
             )
+            self.currentSessionDevices = [DefaultDevice]
         self.currentSessionDevices.extend(
             self.inputDevices if deviceType == DeviceType.INPUT else self.outputDevices
         )
@@ -169,6 +176,12 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
         )
 
     def script_switchDevice(self, gesture):
+        if (
+            not isinstance(self.currentSession, DeviceSession)
+            and not AudioManager.sessionDeviceSettingsIsSupported
+        ):
+            ui.message(FEATURE_NOT_SUPPORTED_TEXT)
+            return
         offset = -1 if gesture.mainKeyName == "upArrow" else 1
         oldIndex = self.currentSessionDeviceIndex
         newIndex = max(0, min(len(self.currentSessionDevices) - 1, oldIndex + offset))
@@ -179,6 +192,12 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
             tones.beep(200 if offset < 0 else 500, 50)
 
     def script_setDevice(self, gesture):
+        if (
+            not isinstance(self.currentSession, DeviceSession)
+            and not AudioManager.sessionDeviceSettingsIsSupported
+        ):
+            ui.message(FEATURE_NOT_SUPPORTED_TEXT)
+            return
         newDevice = self.currentSessionDevices[self.currentSessionDeviceIndex]
         if isinstance(self.currentSession, DeviceSession):
             deviceAttributeName = "device"
@@ -194,6 +213,12 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
         ui.message(_("Applied"))
 
     def script_resetConfiguration(self, gesture):
+        if (
+            not isinstance(self.currentSession, DeviceSession)
+            and not AudioManager.sessionDeviceSettingsIsSupported
+        ):
+            ui.message(FEATURE_NOT_SUPPORTED_TEXT)
+            return
         if getLastScriptRepeatCount() < 2:
             ui.message(_("Press three times to reset device configuration"))
             return

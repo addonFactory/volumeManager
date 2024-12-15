@@ -14,6 +14,10 @@ from ctypes.wintypes import HANDLE, ULONG
 import winVersion
 from comtypes import COMMETHOD, GUID, HRESULT, IUnknown
 
+from .constants import (
+    AUDIO_POLICY_CONFIG_VERSION1_BUILD,
+    AUDIO_POLICY_CONFIG_VERSION2_BUILD,
+)
 from .enums import EDataFlow, ERole, TrustLevel
 
 REFIID = POINTER(GUID)
@@ -33,10 +37,14 @@ PHSTRING = POINTER(HSTRING)
 FACTORY = POINTER(c_void_p)
 
 IID_IInspectable = GUID("{AF86E2E0-B12D-4C6A-9C5A-D7AA65101E90}")
-if winVersion.getWinVer().build >= 21390:
+winBuild = winVersion.getWinVer().build
+if winBuild >= AUDIO_POLICY_CONFIG_VERSION2_BUILD:
     IID_IAudioPolicyConfig = GUID("{ab3d4648-e242-459f-b02f-541c70306324}")
-else:
+elif winBuild >= AUDIO_POLICY_CONFIG_VERSION1_BUILD:
     IID_IAudioPolicyConfig = GUID("{2a59116d-6c4f-45e0-a74f-707e3fef9258}")
+else:
+    IID_IAudioPolicyConfig = None  # pylint: disable=c0103
+
 AUDIO_POLICY_CONFIG_CLASS_NAME = "Windows.Media.Internal.AudioPolicyConfig"
 
 combase = windll.combase
@@ -126,6 +134,8 @@ def hstringToString(hstring):
 
 
 def getAudioPolicyConfig():
+    if IID_IAudioPolicyConfig is None:
+        return
     factory = FACTORY()
     combase.RoGetActivationFactory(
         stringToHstring(AUDIO_POLICY_CONFIG_CLASS_NAME),
