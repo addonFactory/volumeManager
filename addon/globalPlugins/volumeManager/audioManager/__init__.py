@@ -1,3 +1,4 @@
+import psutil
 from comtypes import CLSCTX_ALL
 from pycaw.api.endpointvolume import IAudioEndpointVolume
 from pycaw.utils import AudioDevice, AudioUtilities
@@ -208,7 +209,8 @@ class AudioManager:
     def getAllSessions(self):
         sessions = []
         for session in AudioUtilities.GetAllSessions():
-            if not session.Process or not session.Process.is_running():
-                continue
-            sessions.append(AudioSession(session))
+            try:
+                sessions.append(AudioSession(session))
+            except psutil.NoSuchProcess:
+                pass
         return sessions
