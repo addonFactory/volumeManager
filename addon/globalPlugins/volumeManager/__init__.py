@@ -4,7 +4,6 @@
 
 import addonHandler
 import globalPluginHandler
-import gui
 import tones
 import ui
 from pycaw.utils import AudioUtilities
@@ -14,7 +13,6 @@ from speech import cancelSpeech
 from .audioManager import AudioManager, DefaultDevice, DeviceSession
 from .constants import BASE_GESTURES, OVERLAY_GESTURES, VOLUME_CHANGE_AMOUNT_MAP
 from .enums import DeviceType
-from .interface import ChangeVolumeDialog
 from .notification_callback import NotificationCallback
 
 addonHandler.initTranslation()
@@ -153,11 +151,6 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
             if device == currentSessionDevice:
                 self.currentSessionDeviceIndex = i
                 break
-
-    def script_openSetVolumeDialog(self, gesture):
-        self.clearGestureBindings()
-        currentValue = self.currentSession.volume
-        gui.mainFrame._popupSettingsDialog(ChangeVolumeDialog, self, value=currentValue)
 
     def setVolume(self, volume):
         self.currentSession.volume = volume

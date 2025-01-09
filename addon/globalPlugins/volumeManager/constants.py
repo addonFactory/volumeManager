@@ -10,7 +10,6 @@ OVERLAY_GESTURES = {
     "kb:control+upArrow": "switchDevice",
     "kb:control+downArrow": "switchDevice",
     "kb:control+rightArrow": "setDevice",
-    "kb:space": "openSetVolumeDialog",
     "kb:m": "muteSession",
     "kb:d": "cycleDeviceTypes",
     "kb:control+r": "resetConfiguration",
