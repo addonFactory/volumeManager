@@ -85,6 +85,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
     def script_setVolume(self, gesture):
         amount = int(gesture.mainKeyName) * 10
+        # We want max volume when the 0 key is pressed
+        amount = 100 if amount == 0 else amount
         self.changeVolume(amount, False)
 
     def changeVolume(self, amount, relative=True):
