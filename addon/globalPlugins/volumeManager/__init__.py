@@ -201,6 +201,13 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
                 "inputDevice" if self.deviceType == DeviceType.INPUT else "outputDevice"
             )
         currentDevice = getattr(self.currentSession, deviceAttributeName)
+        if currentDevice is None:
+            # Sometimes we get such strange sessions,
+            # for example@%SystemRoot%\System32\AudioSrv.Dll,-202
+            # Getting the default device for such sessions causes an exception,
+            # trying to set another device also results in an exception.
+            ui.message(_("Operation not supported"))
+            return
         if currentDevice == newDevice:
             tones.beep(350, 100)
             return

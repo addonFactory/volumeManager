@@ -1,3 +1,4 @@
+import comtypes
 import psutil
 from comtypes import CLSCTX_ALL
 from pycaw.api.endpointvolume import IAudioEndpointVolume
@@ -72,9 +73,12 @@ class AudioSession:
     def inputDevice(self):
         if AudioManager.audioPolicyConfig is None:
             return
-        deviceId = AudioManager.audioPolicyConfig.GetPersistedDefaultAudioEndpoint(
-            self.session.ProcessId, EDataFlow.eCapture, ERole.eMultimedia
-        )
+        try:
+            deviceId = AudioManager.audioPolicyConfig.GetPersistedDefaultAudioEndpoint(
+                self.session.ProcessId, EDataFlow.eCapture, ERole.eMultimedia
+            )
+        except comtypes.COMError:
+            return
         return self._getDeviceById(deviceId)
 
     @inputDevice.setter
@@ -85,9 +89,12 @@ class AudioSession:
     def outputDevice(self):
         if AudioManager.audioPolicyConfig is None:
             return
-        deviceId = AudioManager.audioPolicyConfig.GetPersistedDefaultAudioEndpoint(
-            self.session.ProcessId, EDataFlow.eRender, ERole.eMultimedia
-        )
+        try:
+            deviceId = AudioManager.audioPolicyConfig.GetPersistedDefaultAudioEndpoint(
+                self.session.ProcessId, EDataFlow.eRender, ERole.eMultimedia
+            )
+        except comtypes.COMError:
+            return
         return self._getDeviceById(deviceId)
 
     @outputDevice.setter
