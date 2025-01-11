@@ -216,6 +216,8 @@ class AudioManager:
     def getAllSessions(self):
         sessions = []
         for session in AudioUtilities.GetAllSessions():
+            if not session.Process or not session.Process.is_running():
+                continue
             try:
                 sessions.append(AudioSession(session))
             except psutil.NoSuchProcess:
