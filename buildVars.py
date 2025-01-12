@@ -18,13 +18,11 @@ addon_info = {
 	# add-on Name/identifier, internal for NVDA
 	"addon_name": "volumeManager",
 	# Add-on summary, usually the user visible name of the addon.
-	# Translators: Summary for this add-on
-	# to be shown on installation and add-on information found in Add-ons Manager.
-	"addon_summary": _("Volume Manager"),
+	"addon_summary": "Volume Manager",
 	# Add-on description
 	# Translators: Long description to be shown for this add-on on add-on information from add-ons manager
 	"addon_description": _("""Manage master volume, as well as volume of different applications directly within NVDA instead of going to windows mixer.
--Addon also announces Level of changed volume with multimedia/function keys."""),
+Addon also announces Level of changed volume with multimedia/function keys."""),
 	# version
 	"addon_version": "0.6.3",
 	# Author(s)
@@ -32,7 +30,7 @@ addon_info = {
 	# URL for the add-on documentation support
 	"addon_url": None,
 	# URL for the add-on repository where the source code can be found
-	"addon_sourceURL": "https://github.com/beqabeqa473/volumeManager",
+	"addon_sourceURL": "https://github.com/addonFactory/volumeManager",
 	# Documentation file name
 	"addon_docFileName": "readme.html",
 	# Minimum NVDA version supported (e.g. "2018.3.0", minor version is optional)
@@ -69,6 +67,7 @@ excludedFiles = []
 # Base language for the NVDA add-on
 # If your add-on is written in a language other than english, modify this variable.
 # For example, set baseLanguage to "es" if your add-on is primarily written in spanish.
+# You must also edit .gitignore file to specify base language files to be ignored.
 baseLanguage = "en"
 
 # Markdown extensions for add-on documentation
@@ -77,3 +76,22 @@ baseLanguage = "en"
 # Extensions string must be of the form "markdown.extensions.extensionName"
 # e.g. "markdown.extensions.tables" to add tables.
 markdownExtensions = []
+
+# Custom braille translation tables
+# If your add-on includes custom braille tables (most will not), fill out this dictionary.
+# Each key is a dictionary named according to braille table file name,
+# with keys inside recording the following attributes:
+# displayName (name of the table shown to users and translatable),
+# contracted (contracted (True) or uncontracted (False) braille code),
+# output (shown in output table list),
+# input (shown in input table list).
+brailleTables = {}
+
+# Custom speech symbol dictionaries
+# Symbol dictionary files reside in the locale folder, e.g. `locale\en`, and are named `symbols-<name>.dic`.
+# If your add-on includes custom speech symbol dictionaries (most will not), fill out this dictionary.
+# Each key is the name of the dictionary,
+# with keys inside recording the following attributes:
+# displayName (name of the speech dictionary  shown to users and translatable),
+# mandatory (True when always enabled, False when not.
+symbolDictionaries = {}
