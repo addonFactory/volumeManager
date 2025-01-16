@@ -24,7 +24,7 @@ addon_info = {
 	"addon_description": _("""Manage master volume, as well as volume of different applications directly within NVDA instead of going to windows mixer.
 Addon also announces Level of changed volume with multimedia/function keys."""),
 	# version
-	"addon_version": "0.6.3",
+	"addon_version": "0.6.4",
 	# Author(s)
 	"addon_author": "Danstiv <danstiv@yandex.ru>, Beqa Gozalishvili <beqaprogger@gmail.com>",
 	# URL for the add-on documentation support
@@ -40,7 +40,7 @@ Addon also announces Level of changed volume with multimedia/function keys."""),
 	# Add-on update channel (default is None, denoting stable releases,
 	# and for development releases, use "dev".)
 	# Do not change unless you know what you are doing!
-	"addon_updateChannel": None,
+	"addon_updateChannel": "dev",
 	# Add-on license such as GPL 2
 	"addon_license": "GPL v2",
 	# URL for the license document the ad-on is licensed under
