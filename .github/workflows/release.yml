@@ -1,0 +1,59 @@
+name: Addon-release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  release:
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: 3.11
+
+    - name: Install dependencies
+      run: |
+        pip install scons markdown
+        sudo apt update
+        sudo apt install gettext
+
+    - name: Build addon
+      run: scons
+
+    - name: Upload release
+      id: release
+      uses: softprops/action-gh-release@v2
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        tag_name: ${{ github.ref_name }}
+        files: |
+          *.nvda-addon
+        generate_release_notes: true
+        prerelease: false
+
+    - name: extract addon info
+      run: |
+        python3 -c 'from buildVars import addon_info
+        env = {
+            "ADDON_NAME": addon_info["addon_name"],
+            "ADDON_VERSION": addon_info["addon_version"],
+            "ADDON_CHANNEL": addon_info["addon_updateChannel"],
+        }
+        [print(f"{k}={v}") for k, v in env.items()]' > "$GITHUB_ENV"
+
+    - name: submit addon
+      uses: beqabeqa473/submitNVDAAddon@v1
+      with:
+        addon_name: ${{ env.ADDON_NAME }}
+        addon_version: ${{ env.ADDON_VERSION }}
+        download_url: ${{ fromJSON(steps.release.outputs.assets)[0].browser_download_url }}
+        channel: ${{ env.ADDON_CHANNEL }}
+        token: ${{ secrets.USER_TOKEN }}
