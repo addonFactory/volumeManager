@@ -319,7 +319,7 @@ def createRelease(target, source, env):
     tag = f"v{version}-{channel}"
     env.Execute(f"git tag {tag}")
     print(f'Previous version: {buildVars.addon_info["addon_version"]}')
-    input(f"Press enter to push the release {version}_{channel}")
+    input(f"Press enter to push the release {version}-{channel}")
     env.Execute(f"git push --atomic origin {branch_name} {tag}")
 
 
