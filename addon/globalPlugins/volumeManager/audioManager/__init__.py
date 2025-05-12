@@ -1,11 +1,10 @@
 import comtypes
 import psutil
-from comtypes import CLSCTX_ALL
 from comtypes.hresult import S_OK
 from pycaw.api.audiopolicy import IAudioSessionControl2, IAudioSessionManager2
-from pycaw.api.endpointvolume import IAudioEndpointVolume
 from pycaw.utils import AudioDevice, AudioSession, AudioUtilities
 
+from .notificationCallback import NotificationCallback
 from .pycawExt.constants import (
     DEVICE_STATE_ACTIVE,
     INTERNAL_ID_AUDIO_CAPTURE_SUFFIX,
@@ -27,12 +26,25 @@ class AudioDevice(AudioDevice):
     # Audio policy config ids to devices mapping.
     _cachedDevices = {}
 
-    def __eq__(self, other):
-        return isinstance(other, AudioDevice) and self.id == other.id
-
     @property
     def name(self):
         return self.FriendlyName
+
+    @property
+    def volume(self):
+        return round(self.EndpointVolume.GetMasterVolumeLevelScalar() * 100)
+
+    @volume.setter
+    def volume(self, volume):
+        self.EndpointVolume.SetMasterVolumeLevelScalar(volume / 100, None)
+
+    @property
+    def muted(self):
+        return self.EndpointVolume.GetMute()
+
+    @muted.setter
+    def muted(self, muted):
+        self.EndpointVolume.SetMute(muted, None)
 
     @classmethod
     def createDevice(cls, dev, flow: EDataFlow):
@@ -40,6 +52,8 @@ class AudioDevice(AudioDevice):
         device = cls(device.id, device.state, device.properties, device._dev)
         if flow is EDataFlow.eRender:
             internalIdSuffix = INTERNAL_ID_AUDIO_RENDER_SUFFIX
+            o = dev.Activate(IAudioSessionManager2._iid_, comtypes.CLSCTX_ALL, None)
+            device.manager = o.QueryInterface(IAudioSessionManager2)
         elif flow is EDataFlow.eCapture:
             internalIdSuffix = INTERNAL_ID_AUDIO_CAPTURE_SUFFIX
         else:
@@ -50,7 +64,7 @@ class AudioDevice(AudioDevice):
         return device
 
     @classmethod
-    def getDeviceById(cls, deviceId):
+    def getDeviceByAudioPolicyConfigId(cls, deviceId):
         if deviceId.value is None:
             return DefaultDevice
         deviceId = hstringToString(deviceId)
@@ -58,21 +72,22 @@ class AudioDevice(AudioDevice):
             return device
         raise RuntimeError("Device not found in cache")
 
+    def __eq__(self, other):
+        return isinstance(other, AudioDevice) and self.id == other.id
+
 
 class AudioSession(AudioSession):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.isSystemSounds = False
         if self._ctl.IsSystemSoundsSession() == S_OK:
             self.isSystemSounds = True
-            self.name = "System sounds"
-        else:
-            self.isSystemSounds = False
-            self.name = self.DisplayName
-            if not self.name:
-                try:
-                    self.name = self.Process.name()
-                except psutil.NoSuchProcess:
-                    pass
+        self.name = self.DisplayName
+        if not self.name:
+            try:
+                self.name = self.Process.name()
+            except psutil.NoSuchProcess:
+                pass
 
     @property
     def volume(self):
@@ -94,13 +109,10 @@ class AudioSession(AudioSession):
     def inputDevice(self):
         if AudioManager.audioPolicyConfig is None:
             return
-        try:
-            deviceId = AudioManager.audioPolicyConfig.GetPersistedDefaultAudioEndpoint(
-                self.ProcessId, EDataFlow.eCapture, ERole.eMultimedia
-            )
-        except comtypes.COMError:
-            return
-        return AudioDevice.getDeviceById(deviceId)
+        deviceId = AudioManager.audioPolicyConfig.GetPersistedDefaultAudioEndpoint(
+            self.ProcessId, EDataFlow.eCapture, ERole.eMultimedia
+        )
+        return AudioDevice.getDeviceByAudioPolicyConfigId(deviceId)
 
     @inputDevice.setter
     def inputDevice(self, device):
@@ -110,13 +122,10 @@ class AudioSession(AudioSession):
     def outputDevice(self):
         if AudioManager.audioPolicyConfig is None:
             return
-        try:
-            deviceId = AudioManager.audioPolicyConfig.GetPersistedDefaultAudioEndpoint(
-                self.ProcessId, EDataFlow.eRender, ERole.eMultimedia
-            )
-        except comtypes.COMError:
-            return
-        return AudioDevice.getDeviceById(deviceId)
+        deviceId = AudioManager.audioPolicyConfig.GetPersistedDefaultAudioEndpoint(
+            self.ProcessId, EDataFlow.eRender, ERole.eMultimedia
+        )
+        return AudioDevice.getDeviceByAudioPolicyConfigId(deviceId)
 
     @outputDevice.setter
     def outputDevice(self, device):
@@ -139,29 +148,22 @@ class DeviceSession(AudioSession):
         self.name = name
         self._device = device
         self.deviceType = deviceType
-        self.initializeSession()
-
-    def initializeSession(self):
-        interface = self._device._dev.Activate(
-            IAudioEndpointVolume._iid_, CLSCTX_ALL, None
-        )
-        self.session = interface.QueryInterface(IAudioEndpointVolume)
 
     @property
     def volume(self):
-        return round(self.session.GetMasterVolumeLevelScalar() * 100)
+        return self.device.volume
 
     @volume.setter
     def volume(self, volume):
-        self.session.SetMasterVolumeLevelScalar(volume / 100, None)
+        self.device.volume = volume
 
     @property
     def muted(self):
-        return self.session.GetMute()
+        return self.device.muted
 
     @muted.setter
     def muted(self, muted):
-        self.session.SetMute(muted, None)
+        self.device.muted = muted
 
     @property
     def device(self):
@@ -172,7 +174,6 @@ class DeviceSession(AudioSession):
         for role in [ERole.eConsole, ERole.eCommunications, ERole.eMultimedia]:
             AudioManager.policyConfig.SetDefaultEndpoint(device.id, role)
         self._device = device
-        self.initializeSession()
 
 
 class AudioManager:
@@ -180,42 +181,50 @@ class AudioManager:
     audioPolicyConfig = getAudioPolicyConfig()
     policyConfig = getPolicyConfig()
 
-    @classmethod
-    @property
-    def sessionDeviceSettingsIsSupported(cls):
-        return cls.audioPolicyConfig is not None
+    def __init__(self):
+        self.inputDevices = []
+        self.outputDevices = []
+        self.defaultInputDevice = None
+        self.defaultOutputDevice = None
+        self.fetchDevices()
+        self.notificationCallback = NotificationCallback(self.onDevicesChanged)
+        self.deviceEnumerator.RegisterEndpointNotificationCallback(
+            self.notificationCallback
+        )
 
-    @classmethod
-    def resetConfiguration(cls):
-        cls.audioPolicyConfig.ClearAllPersistedApplicationDefaultEndpoints()
+    def terminate(self):
+        self.deviceEnumerator.UnregisterEndpointNotificationCallback(
+            self.notificationCallback
+        )
 
-    def getDefaultInputDevice(self):
-        return AudioDevice.createDevice(
+    def onDevicesChanged(self):
+        self.fetchDevices()
+
+    def fetchDevices(self):
+        self.defaultInputDevice = AudioDevice.createDevice(
             self.deviceEnumerator.GetDefaultAudioEndpoint(
                 EDataFlow.eCapture, ERole.eMultimedia
             ),
             EDataFlow.eCapture,
         )
-
-    def getDefaultOutputDevice(self):
-        return AudioDevice.createDevice(
+        self.defaultOutputDevice = AudioDevice.createDevice(
             self.deviceEnumerator.GetDefaultAudioEndpoint(
                 EDataFlow.eRender, ERole.eMultimedia
             ),
             EDataFlow.eRender,
         )
-
-    def getInputDevices(self):
         collection = self.deviceEnumerator.EnumAudioEndpoints(
             EDataFlow.eCapture, DEVICE_STATE_ACTIVE
         )
-        return self._getDevicesFromCollection(collection, EDataFlow.eCapture)
-
-    def getOutputDevices(self):
+        self.inputDevices = self._getDevicesFromCollection(
+            collection, EDataFlow.eCapture
+        )
         collection = self.deviceEnumerator.EnumAudioEndpoints(
             EDataFlow.eRender, DEVICE_STATE_ACTIVE
         )
-        return self._getDevicesFromCollection(collection, EDataFlow.eRender)
+        self.outputDevices = self._getDevicesFromCollection(
+            collection, EDataFlow.eRender
+        )
 
     def _getDevicesFromCollection(self, collection, flow: EDataFlow):
         devices = []
@@ -226,24 +235,30 @@ class AudioManager:
                 devices.append(AudioDevice.createDevice(device, flow))
         return devices
 
-    def _getAllDeviceManagers(self):
-        managers = []
-        for device in self.getOutputDevices():
-            o = device._dev.Activate(
-                IAudioSessionManager2._iid_, comtypes.CLSCTX_ALL, None
-            )
-            managers.append(o.QueryInterface(IAudioSessionManager2))
-        return managers
+    @classmethod
+    @property
+    def sessionDeviceSettingsIsSupported(cls):
+        return cls.audioPolicyConfig is not None
+
+    @classmethod
+    def resetConfiguration(cls):
+        cls.audioPolicyConfig.ClearAllPersistedApplicationDefaultEndpoints()
 
     def getAllSessions(self):
-        managers = self._getAllDeviceManagers()
         sessions = []
-        for manager in managers:
-            sessions.extend(self._getDeviceSessions(manager))
+        for device in self.outputDevices:
+            ignoreSystemSoundsSession = (
+                False if device == self.defaultOutputDevice else True
+            )
+            sessions.extend(
+                self._getDeviceSessions(
+                    device.manager, ignoreSystemSoundsSession=ignoreSystemSoundsSession
+                )
+            )
         return sessions
 
     @staticmethod
-    def _getDeviceSessions(deviceManager):
+    def _getDeviceSessions(deviceManager, *, ignoreSystemSoundsSession=False):
         sessions = []
         sessionEnumerator = deviceManager.GetSessionEnumerator()
         count = sessionEnumerator.GetCount()
@@ -251,5 +266,7 @@ class AudioManager:
             ctl = sessionEnumerator.GetSession(i)
             ctl2 = ctl.QueryInterface(IAudioSessionControl2)
             session = AudioSession(ctl2)
+            if session.isSystemSounds and ignoreSystemSoundsSession:
+                continue
             sessions.append(session)
         return sessions

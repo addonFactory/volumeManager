@@ -6,14 +6,12 @@ import addonHandler
 import globalPluginHandler
 import tones
 import ui
-from pycaw.utils import AudioUtilities
 from scriptHandler import getLastScriptRepeatCount
 from speech import cancelSpeech
 
 from .audioManager import AudioManager, DefaultDevice, DeviceSession
 from .constants import BASE_GESTURES, OVERLAY_GESTURES, VOLUME_CHANGE_AMOUNT_MAP
 from .enums import DeviceType
-from .notification_callback import NotificationCallback
 
 addonHandler.initTranslation()
 
@@ -26,47 +24,36 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.audioManager = AudioManager()
-        self.fetchDevices()
-        self.sessions = [self.outputDeviceSession]
+        self.sessions = []
         self.currentSession = None
         self.currentSessionIndex = 0
         self.currentSessionDevices = []
         self.currentSessionDeviceIndex = 0
-        self.deviceType = DeviceType.OUTPUT
-        self.switchSession(0)
+        self.controllingDeviceType = DeviceType.OUTPUT
         self.overlayActive = False
         self.setBaseGestures()
-        self.deviceEnumerator = AudioUtilities.GetDeviceEnumerator()
-        self.notificationCallback = NotificationCallback(self)
-        self.deviceEnumerator.RegisterEndpointNotificationCallback(
-            self.notificationCallback
+
+    @property
+    def _sessionDeviceSwitchingSupported(self):
+        return (
+            isinstance(self.currentSession, DeviceSession)
+            or AudioManager.sessionDeviceSettingsIsSupported
         )
 
     @staticmethod
     def getDeviceName(device):
         if device is DefaultDevice:
             return _("Default device")
-        if device is None:
-            return
         return device.name
 
-    def fetchDevices(self):
-        self.inputDevice = self.audioManager.getDefaultInputDevice()
-        self.outputDevice = self.audioManager.getDefaultOutputDevice()
-        self.inputDevices = self.audioManager.getInputDevices()
-        self.outputDevices = self.audioManager.getOutputDevices()
-        self.outputDeviceSession = DeviceSession(
-            _("Output device"), self.outputDevice, DeviceType.OUTPUT
-        )
-        self.inputDeviceSession = DeviceSession(
-            _("Input device"), self.inputDevice, DeviceType.INPUT
-        )
+    def getSessionName(self, session):
+        if not isinstance(session, DeviceSession) and session.isSystemSounds:
+            return _("System sounds")
+        return session.name
 
     def terminate(self):
         super().terminate()
-        self.deviceEnumerator.UnregisterEndpointNotificationCallback(
-            self.notificationCallback
-        )
+        self.audioManager.terminate()
 
     def event_UIA_notification(self, obj, next, **kwargs):
         if (
@@ -98,17 +85,17 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
         ui.message(f"{newVolume}%")
 
     def script_onVolumeDown(self, gesture):
-        self.outputDeviceSession.session.VolumeStepDown(None)
+        self.audioManager.defaultOutputDevice.EndpointVolume.VolumeStepDown(None)
         self.onSystemVolumeChange()
 
     def script_onVolumeUp(self, gesture):
-        self.outputDeviceSession.session.VolumeStepUp(None)
+        self.audioManager.defaultOutputDevice.EndpointVolume.VolumeStepUp(None)
         self.onSystemVolumeChange()
 
     def onSystemVolumeChange(self):
         # NVDA ignores multimedia keys and does not stop speech.
         cancelSpeech()
-        ui.message(f"{self.outputDeviceSession.volume}%")
+        ui.message(f"{self.audioManager.defaultOutputDevice.volume}%")
 
     def script_switchSession(self, gesture):
         offset = -1 if gesture.mainKeyName == "leftArrow" else 1
@@ -119,13 +106,14 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
         else:
             device = (
                 self.currentSession.inputDevice
-                if self.deviceType == DeviceType.INPUT
+                if self.controllingDeviceType == DeviceType.INPUT
                 else self.currentSession.outputDevice
             )
-        deviceName = self.getDeviceName(device)
-        message = f"{self.currentSession.name} {self.currentSession.volume}%"
-        if deviceName is not None:
-            message += f" - {deviceName}"
+        message = (
+            f"{self.getSessionName(self.currentSession)} {self.currentSession.volume}%"
+        )
+        if device is not None:
+            message += f" - {self.getDeviceName(device)}"
         ui.message(message)
 
     def switchSession(self, sessionIndex):
@@ -137,7 +125,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
             deviceType = self.currentSession.deviceType
             currentSessionDevice = self.currentSession.device
         else:
-            deviceType = self.deviceType
+            deviceType = self.controllingDeviceType
             currentSessionDevice = (
                 self.currentSession.inputDevice
                 if deviceType == DeviceType.INPUT
@@ -145,7 +133,9 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
             )
             self.currentSessionDevices = [DefaultDevice]
         self.currentSessionDevices.extend(
-            self.inputDevices if deviceType == DeviceType.INPUT else self.outputDevices
+            self.audioManager.inputDevices
+            if deviceType == DeviceType.INPUT
+            else self.audioManager.outputDevices
         )
         for i, device in enumerate(self.currentSessionDevices):
             if device == currentSessionDevice:
@@ -161,20 +151,17 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
         ui.message(_("muted") if self.currentSession.muted else _("unmuted"))
 
     def script_cycleDeviceTypes(self, gesture):
-        value = (self.deviceType.value + 1) % len(DeviceType)
-        self.deviceType = DeviceType(value)
+        value = (self.controllingDeviceType.value + 1) % len(DeviceType)
+        self.controllingDeviceType = DeviceType(value)
         self.switchSession(self.currentSessionIndex)
         ui.message(
             _("Input devices")
-            if self.deviceType == DeviceType.INPUT
+            if self.controllingDeviceType == DeviceType.INPUT
             else _("Output devices")
         )
 
     def script_switchDevice(self, gesture):
-        if (
-            not isinstance(self.currentSession, DeviceSession)
-            and not AudioManager.sessionDeviceSettingsIsSupported
-        ):
+        if not self._sessionDeviceSwitchingSupported:
             ui.message(FEATURE_NOT_SUPPORTED_TEXT)
             return
         offset = -1 if gesture.mainKeyName == "upArrow" else 1
@@ -187,27 +174,22 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
             tones.beep(200 if offset < 0 else 500, 50)
 
     def script_setDevice(self, gesture):
-        if (
-            not isinstance(self.currentSession, DeviceSession)
-            and not AudioManager.sessionDeviceSettingsIsSupported
-        ):
+        if not self._sessionDeviceSwitchingSupported:
             ui.message(FEATURE_NOT_SUPPORTED_TEXT)
             return
-        newDevice = self.currentSessionDevices[self.currentSessionDeviceIndex]
         if isinstance(self.currentSession, DeviceSession):
             deviceAttributeName = "device"
         else:
+            if self.currentSession.isSystemSounds:
+                ui.message(_("Operation not supported"))
+                return
             deviceAttributeName = (
-                "inputDevice" if self.deviceType == DeviceType.INPUT else "outputDevice"
+                "inputDevice"
+                if self.controllingDeviceType == DeviceType.INPUT
+                else "outputDevice"
             )
         currentDevice = getattr(self.currentSession, deviceAttributeName)
-        if currentDevice is None:
-            # Sometimes we get such strange sessions,
-            # for example@%SystemRoot%\System32\AudioSrv.Dll,-202
-            # Getting the default device for such sessions causes an exception,
-            # trying to set another device also results in an exception.
-            ui.message(_("Operation not supported"))
-            return
+        newDevice = self.currentSessionDevices[self.currentSessionDeviceIndex]
         if currentDevice == newDevice:
             tones.beep(350, 100)
             return
@@ -215,10 +197,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
         ui.message(_("Applied"))
 
     def script_resetConfiguration(self, gesture):
-        if (
-            not isinstance(self.currentSession, DeviceSession)
-            and not AudioManager.sessionDeviceSettingsIsSupported
-        ):
+        if not self._sessionDeviceSwitchingSupported:
             ui.message(FEATURE_NOT_SUPPORTED_TEXT)
             return
         if getLastScriptRepeatCount() < 2:
@@ -233,15 +212,24 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
             tones.beep(440, 100)
             self.setBaseGestures()
             return
+        inputDeviceSession = DeviceSession(
+            _("Input device"), self.audioManager.defaultInputDevice, DeviceType.INPUT
+        )
+        outputDeviceSession = DeviceSession(
+            _("Output device"), self.audioManager.defaultOutputDevice, DeviceType.OUTPUT
+        )
         self.sessions = []
         newSessionIndex = 0
         for session in [
-            self.outputDeviceSession,
-            self.inputDeviceSession,
+            outputDeviceSession,
+            inputDeviceSession,
             *self.audioManager.getAllSessions(),
         ]:
             self.sessions.append(session)
-            if session.name == self.currentSession.name:
+            if (
+                self.currentSession is not None
+                and session.name == self.currentSession.name
+            ):
                 newSessionIndex = len(self.sessions) - 1
         self.switchSession(newSessionIndex)
         tones.beep(660, 100)
