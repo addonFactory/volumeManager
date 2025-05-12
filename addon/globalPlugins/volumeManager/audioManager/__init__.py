@@ -1,8 +1,9 @@
 import comtypes
 import psutil
 from comtypes import CLSCTX_ALL
+from pycaw.api.audiopolicy import IAudioSessionControl2, IAudioSessionManager2
 from pycaw.api.endpointvolume import IAudioEndpointVolume
-from pycaw.utils import AudioDevice, AudioUtilities
+from pycaw.utils import AudioDevice, AudioSession, AudioUtilities
 
 from .pycawExt.constants import (
     DEVICE_STATE_ACTIVE,
@@ -47,27 +48,36 @@ class AudioDevice(AudioDevice):
         cls._cachedDevices[internalId] = device
         return device
 
+    @classmethod
+    def getDeviceById(cls, deviceId):
+        if deviceId.value is None:
+            return DefaultDevice
+        deviceId = hstringToString(deviceId)
+        if device := cls._cachedDevices.get(deviceId, None):
+            return device
+        raise RuntimeError("Device not found in cache")
 
-class AudioSession:
-    def __init__(self, session):
-        self.session = session
-        self.name = session.DisplayName or session.Process.name()
+
+class AudioSession(AudioSession):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.name = self.DisplayName or self.Process.name()
 
     @property
     def volume(self):
-        return round(self.session.SimpleAudioVolume.GetMasterVolume() * 100)
+        return round(self.SimpleAudioVolume.GetMasterVolume() * 100)
 
     @volume.setter
     def volume(self, volume):
-        self.session.SimpleAudioVolume.SetMasterVolume(volume / 100, None)
+        self.SimpleAudioVolume.SetMasterVolume(volume / 100, None)
 
     @property
     def muted(self):
-        return self.session.SimpleAudioVolume.GetMute()
+        return self.SimpleAudioVolume.GetMute()
 
     @muted.setter
     def muted(self, muted):
-        self.session.SimpleAudioVolume.SetMute(muted, None)
+        self.SimpleAudioVolume.SetMute(muted, None)
 
     @property
     def inputDevice(self):
@@ -75,11 +85,11 @@ class AudioSession:
             return
         try:
             deviceId = AudioManager.audioPolicyConfig.GetPersistedDefaultAudioEndpoint(
-                self.session.ProcessId, EDataFlow.eCapture, ERole.eMultimedia
+                self.ProcessId, EDataFlow.eCapture, ERole.eMultimedia
             )
         except comtypes.COMError:
             return
-        return self._getDeviceById(deviceId)
+        return AudioDevice.getDeviceById(deviceId)
 
     @inputDevice.setter
     def inputDevice(self, device):
@@ -91,23 +101,15 @@ class AudioSession:
             return
         try:
             deviceId = AudioManager.audioPolicyConfig.GetPersistedDefaultAudioEndpoint(
-                self.session.ProcessId, EDataFlow.eRender, ERole.eMultimedia
+                self.ProcessId, EDataFlow.eRender, ERole.eMultimedia
             )
         except comtypes.COMError:
             return
-        return self._getDeviceById(deviceId)
+        return AudioDevice.getDeviceById(deviceId)
 
     @outputDevice.setter
     def outputDevice(self, device):
         self._setDevice(device, EDataFlow.eRender)
-
-    def _getDeviceById(self, deviceId):
-        if deviceId.value is None:
-            return DefaultDevice
-        deviceId = hstringToString(deviceId)
-        if device := AudioDevice._cachedDevices.get(deviceId, None):
-            return device
-        raise RuntimeError("Device not found in cache")
 
     def _setDevice(self, device, flow):
         if device is DefaultDevice:
@@ -117,7 +119,7 @@ class AudioSession:
         deviceId = stringToHstring(device.internalId if device else "")
         for role in [ERole.eConsole, ERole.eCommunications, ERole.eMultimedia]:
             AudioManager.audioPolicyConfig.SetPersistedDefaultAudioEndpoint(
-                self.session.ProcessId, flow, role, deviceId
+                self.ProcessId, flow, role, deviceId
             )
 
 
@@ -213,13 +215,39 @@ class AudioManager:
                 devices.append(AudioDevice.createDevice(device, flow))
         return devices
 
+    def _getAllDeviceManagers(self):
+        managers = []
+        for device in self.getOutputDevices():
+            o = device._dev.Activate(
+                IAudioSessionManager2._iid_, comtypes.CLSCTX_ALL, None
+            )
+            managers.append(o.QueryInterface(IAudioSessionManager2))
+        return managers
+
     def getAllSessions(self):
+        managers = self._getAllDeviceManagers()
         sessions = []
-        for session in AudioUtilities.GetAllSessions():
-            if not session.Process or not session.Process.is_running():
+        for manager in managers:
+            sessions.extend(self._getDeviceSessions(manager))
+        return sessions
+
+    @staticmethod
+    def _getDeviceSessions(deviceManager):
+        sessions = []
+        sessionEnumerator = deviceManager.GetSessionEnumerator()
+        count = sessionEnumerator.GetCount()
+        for i in range(count):
+            ctl = sessionEnumerator.GetSession(i)
+            if ctl is None:
+                continue
+            ctl2 = ctl.QueryInterface(IAudioSessionControl2)
+            if ctl2 is None:
                 continue
             try:
-                sessions.append(AudioSession(session))
+                session = AudioSession(ctl2)
             except psutil.NoSuchProcess:
-                pass
+                continue
+            if not session.Process or not session.Process.is_running():
+                continue
+            sessions.append(session)
         return sessions
