@@ -1,6 +1,7 @@
 import comtypes
 import psutil
 from comtypes import CLSCTX_ALL
+from comtypes.hresult import S_OK
 from pycaw.api.audiopolicy import IAudioSessionControl2, IAudioSessionManager2
 from pycaw.api.endpointvolume import IAudioEndpointVolume
 from pycaw.utils import AudioDevice, AudioSession, AudioUtilities
@@ -61,7 +62,17 @@ class AudioDevice(AudioDevice):
 class AudioSession(AudioSession):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.name = self.DisplayName or self.Process.name()
+        if self._ctl.IsSystemSoundsSession() == S_OK:
+            self.isSystemSounds = True
+            self.name = "System sounds"
+        else:
+            self.isSystemSounds = False
+            self.name = self.DisplayName
+            if not self.name:
+                try:
+                    self.name = self.Process.name()
+                except psutil.NoSuchProcess:
+                    pass
 
     @property
     def volume(self):
@@ -238,16 +249,7 @@ class AudioManager:
         count = sessionEnumerator.GetCount()
         for i in range(count):
             ctl = sessionEnumerator.GetSession(i)
-            if ctl is None:
-                continue
             ctl2 = ctl.QueryInterface(IAudioSessionControl2)
-            if ctl2 is None:
-                continue
-            try:
-                session = AudioSession(ctl2)
-            except psutil.NoSuchProcess:
-                continue
-            if not session.Process or not session.Process.is_running():
-                continue
+            session = AudioSession(ctl2)
             sessions.append(session)
         return sessions
