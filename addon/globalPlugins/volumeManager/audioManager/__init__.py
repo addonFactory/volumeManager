@@ -107,7 +107,7 @@ class AudioSession(AudioSession):
 
     @property
     def inputDevice(self):
-        if AudioManager.audioPolicyConfig is None:
+        if AudioManager.audioPolicyConfig is None or self.isSystemSounds:
             return
         deviceId = AudioManager.audioPolicyConfig.GetPersistedDefaultAudioEndpoint(
             self.ProcessId, EDataFlow.eCapture, ERole.eMultimedia
@@ -120,7 +120,7 @@ class AudioSession(AudioSession):
 
     @property
     def outputDevice(self):
-        if AudioManager.audioPolicyConfig is None:
+        if AudioManager.audioPolicyConfig is None or self.isSystemSounds:
             return
         deviceId = AudioManager.audioPolicyConfig.GetPersistedDefaultAudioEndpoint(
             self.ProcessId, EDataFlow.eRender, ERole.eMultimedia
