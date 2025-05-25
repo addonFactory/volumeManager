@@ -85,7 +85,11 @@ class AudioSession(AudioSession):
         self.name = self.DisplayName
         if not self.name:
             try:
-                self.name = self.Process.name()
+                self.name = (
+                    self.Process.name()
+                    if self.Process is not None
+                    else "Unknown session"
+                )
             except psutil.NoSuchProcess:
                 pass
 
