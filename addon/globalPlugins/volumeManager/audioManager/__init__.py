@@ -184,12 +184,11 @@ class AudioManager:
     deviceEnumerator = AudioUtilities.GetDeviceEnumerator()
     audioPolicyConfig = getAudioPolicyConfig()
     policyConfig = getPolicyConfig()
+    _deviceCache = {}
 
     def __init__(self):
         self.inputDevices = []
         self.outputDevices = []
-        self.defaultInputDevice = None
-        self.defaultOutputDevice = None
         self.fetchDevices()
         self.notificationCallback = NotificationCallback(self.onDevicesChanged)
         self.deviceEnumerator.RegisterEndpointNotificationCallback(
@@ -204,19 +203,21 @@ class AudioManager:
     def onDevicesChanged(self):
         self.fetchDevices()
 
+    @property
+    def defaultOutputDevice(self):
+        dev = self.deviceEnumerator.GetDefaultAudioEndpoint(
+            EDataFlow.eRender, ERole.eMultimedia
+        )
+        return self._deviceCache[dev.GetId()]
+
+    @property
+    def defaultInputDevice(self):
+        dev = self.deviceEnumerator.GetDefaultAudioEndpoint(
+            EDataFlow.eCapture, ERole.eMultimedia
+        )
+        return self._deviceCache[dev.GetId()]
+
     def fetchDevices(self):
-        self.defaultInputDevice = AudioDevice.createDevice(
-            self.deviceEnumerator.GetDefaultAudioEndpoint(
-                EDataFlow.eCapture, ERole.eMultimedia
-            ),
-            EDataFlow.eCapture,
-        )
-        self.defaultOutputDevice = AudioDevice.createDevice(
-            self.deviceEnumerator.GetDefaultAudioEndpoint(
-                EDataFlow.eRender, ERole.eMultimedia
-            ),
-            EDataFlow.eRender,
-        )
         collection = self.deviceEnumerator.EnumAudioEndpoints(
             EDataFlow.eCapture, DEVICE_STATE_ACTIVE
         )
@@ -229,6 +230,9 @@ class AudioManager:
         self.outputDevices = self._getDevicesFromCollection(
             collection, EDataFlow.eRender
         )
+        self._deviceCache.clear()
+        for device in self.inputDevices + self.outputDevices:
+            self._deviceCache[device.id] = device
 
     def _getDevicesFromCollection(self, collection, flow: EDataFlow):
         devices = []
