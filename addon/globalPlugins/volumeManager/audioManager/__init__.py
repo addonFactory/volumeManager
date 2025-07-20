@@ -113,9 +113,12 @@ class AudioSession(AudioSession):
     def inputDevice(self):
         if AudioManager.audioPolicyConfig is None or self.isSystemSounds:
             return
-        deviceId = AudioManager.audioPolicyConfig.GetPersistedDefaultAudioEndpoint(
-            self.ProcessId, EDataFlow.eCapture, ERole.eMultimedia
-        )
+        try:
+            deviceId = AudioManager.audioPolicyConfig.GetPersistedDefaultAudioEndpoint(
+                self.ProcessId, EDataFlow.eCapture, ERole.eMultimedia
+            )
+        except comtypes.COMError:
+            return None
         return AudioDevice.getDeviceByAudioPolicyConfigId(deviceId)
 
     @inputDevice.setter
@@ -126,9 +129,12 @@ class AudioSession(AudioSession):
     def outputDevice(self):
         if AudioManager.audioPolicyConfig is None or self.isSystemSounds:
             return
-        deviceId = AudioManager.audioPolicyConfig.GetPersistedDefaultAudioEndpoint(
-            self.ProcessId, EDataFlow.eRender, ERole.eMultimedia
-        )
+        try:
+            deviceId = AudioManager.audioPolicyConfig.GetPersistedDefaultAudioEndpoint(
+                self.ProcessId, EDataFlow.eRender, ERole.eMultimedia
+            )
+        except comtypes.COMError:
+            return None
         return AudioDevice.getDeviceByAudioPolicyConfigId(deviceId)
 
     @outputDevice.setter
