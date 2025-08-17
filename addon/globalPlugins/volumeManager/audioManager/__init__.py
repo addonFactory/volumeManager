@@ -1,5 +1,6 @@
 import comtypes
 import psutil
+from comtypes import COMError
 from comtypes.hresult import S_OK
 from pycaw.api.audiopolicy import IAudioSessionControl2, IAudioSessionManager2
 from pycaw.utils import AudioDevice, AudioSession, AudioUtilities
@@ -211,16 +212,22 @@ class AudioManager:
 
     @property
     def defaultOutputDevice(self):
-        dev = self.deviceEnumerator.GetDefaultAudioEndpoint(
-            EDataFlow.eRender, ERole.eMultimedia
-        )
+        try:
+            dev = self.deviceEnumerator.GetDefaultAudioEndpoint(
+                EDataFlow.eRender, ERole.eMultimedia
+            )
+        except COMError:
+            return
         return self._deviceCache[dev.GetId()]
 
     @property
     def defaultInputDevice(self):
-        dev = self.deviceEnumerator.GetDefaultAudioEndpoint(
-            EDataFlow.eCapture, ERole.eMultimedia
-        )
+        try:
+            dev = self.deviceEnumerator.GetDefaultAudioEndpoint(
+                EDataFlow.eCapture, ERole.eMultimedia
+            )
+        except COMError:
+            return
         return self._deviceCache[dev.GetId()]
 
     def fetchDevices(self):

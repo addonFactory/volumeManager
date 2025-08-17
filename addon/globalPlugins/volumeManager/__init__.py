@@ -212,19 +212,23 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
             tones.beep(440, 100)
             self.setBaseGestures()
             return
-        inputDeviceSession = DeviceSession(
-            _("Input device"), self.audioManager.defaultInputDevice, DeviceType.INPUT
-        )
-        outputDeviceSession = DeviceSession(
-            _("Output device"), self.audioManager.defaultOutputDevice, DeviceType.OUTPUT
-        )
+        defaultInputDevice = self.audioManager.defaultInputDevice
+        defaultOutputDevice = self.audioManager.defaultOutputDevice
+        _sessions = []
+        if defaultOutputDevice is not None:
+            _sessions.append(
+                DeviceSession(
+                    _("Output device"), defaultOutputDevice, DeviceType.OUTPUT
+                )
+            )
+        if defaultInputDevice is not None:
+            _sessions.append(
+                DeviceSession(_("Input device"), defaultInputDevice, DeviceType.INPUT)
+            )
+        _sessions.extend(self.audioManager.getAllSessions())
         self.sessions = []
         newSessionIndex = 0
-        for session in [
-            outputDeviceSession,
-            inputDeviceSession,
-            *self.audioManager.getAllSessions(),
-        ]:
+        for session in _sessions:
             self.sessions.append(session)
             if (
                 self.currentSession is not None
